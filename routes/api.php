@@ -5,6 +5,7 @@ use App\Http\Controllers\Landlord\ImpersonationController as LandlordImpersonati
 use App\Http\Controllers\Landlord\LandlordAdminController;
 use App\Http\Controllers\Landlord\LandlordAuthController;
 use App\Http\Controllers\Landlord\LandlordSetPasswordController;
+use App\Http\Controllers\Landlord\PasswordController as LandlordPasswordController;
 use App\Http\Controllers\Landlord\SettingsController;
 use App\Http\Controllers\Landlord\TenantManagementController;
 use App\Http\Controllers\SetPasswordController;
@@ -32,6 +33,7 @@ Route::post('/landlord/login', [LandlordAuthController::class, 'login'])->middle
 Route::middleware(['landlord.admin'])->group(function () {
     Route::post('/landlord/logout', [LandlordAuthController::class, 'logout']);
     Route::get('/landlord/me', [LandlordAuthController::class, 'me']);
+    Route::post('/landlord/password', [LandlordPasswordController::class, 'update']);
     Route::get('/landlord/tenants', [TenantManagementController::class, 'index']);
     Route::get('/landlord/tenants/{tenantId}', [TenantManagementController::class, 'show']);
     Route::post('/landlord/tenants', [TenantManagementController::class, 'store']);
