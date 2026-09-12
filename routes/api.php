@@ -14,6 +14,7 @@ use App\Http\Controllers\Tenant\PasswordController;
 use App\Http\Controllers\Tenant\RoleController;
 use App\Http\Controllers\Tenant\RolePermissionController;
 use App\Http\Controllers\Tenant\StaffController;
+use App\Http\Controllers\Tenant\StaffQualificationController;
 use App\Http\Controllers\Tenant\StationController;
 use App\Http\Controllers\Tenant\UserController;
 use App\Http\Controllers\Tenant\UserModuleAccessController;
@@ -110,6 +111,23 @@ Route::middleware(['tenant'])->group(function () {
                 Route::put('/users/{userId}/role', [UserRoleController::class, 'update']);
                 Route::put('/users/{userId}/modules/{moduleId}/access', [UserModuleAccessController::class, 'update']);
                 Route::put('/users/{userId}/stations/{stationId}/permissions', [UserPermissionController::class, 'updateForStation']);
+            });
+        });
+
+        // Staff Qualification & Education — clinical module, independent of Control
+        // Panel's CP.STAFF gate. staffOptions exposes only id+name so a holder of
+        // this module doesn't need CP.STAFF access to record a qualification.
+        Route::middleware('module.access:SQE')->group(function () {
+            Route::middleware('permission:SQE.QUALIFICATIONS,view')->group(function () {
+                Route::get('/staff-qualifications', [StaffQualificationController::class, 'index']);
+                Route::get('/staff-qualifications/staff-options', [StaffQualificationController::class, 'staffOptions']);
+                Route::get('/staff-qualifications/{qualificationId}', [StaffQualificationController::class, 'show']);
+            });
+            Route::post('/staff-qualifications', [StaffQualificationController::class, 'store'])
+                ->middleware('permission:SQE.QUALIFICATIONS,add');
+            Route::middleware('permission:SQE.QUALIFICATIONS,edit')->group(function () {
+                Route::put('/staff-qualifications/{qualificationId}', [StaffQualificationController::class, 'update']);
+                Route::delete('/staff-qualifications/{qualificationId}', [StaffQualificationController::class, 'destroy']);
             });
         });
     });

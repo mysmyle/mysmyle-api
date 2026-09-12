@@ -18,4 +18,9 @@ class Staff extends Model
     {
         return $this->hasMany(User::class);
     }
+
+    public function qualifications()
+    {
+        return $this->hasMany(StaffQualification::class);
+    }
 }
