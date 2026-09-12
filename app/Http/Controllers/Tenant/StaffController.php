@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Staff;
+use App\Models\Tenant\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class StaffController extends Controller
 {
@@ -79,6 +81,26 @@ class StaffController extends Controller
         ]);
 
         return response()->json(['staff' => $this->present($staff)]);
+    }
+
+    /** Blocked while any user account is still linked to this staff member. */
+    public function destroy(Request $request, int $staffId)
+    {
+        $staff = Staff::findOrFail($staffId);
+
+        if (User::where('staff_id', $staff->id)->exists()) {
+            throw ValidationException::withMessages([
+                'staff' => ['This staff member still has a user account linked. Remove or reassign it first.'],
+            ]);
+        }
+
+        $staff->delete();
+
+        AuditLog::record($request->user()->id, 'staff.deleted', Staff::class, $staffId, [
+            'name' => $staff->name,
+        ]);
+
+        return response()->json(['message' => 'Staff member deleted.']);
     }
 
     private function present(Staff $staff): array

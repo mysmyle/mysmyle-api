@@ -192,4 +192,41 @@ class StaffTest extends TestCase
         $this->assertSame(1, $rows->firstWhere('name', 'Has Accounts')['users_count']);
         $this->assertSame(0, $rows->firstWhere('name', 'No Accounts')['users_count']);
     }
+
+    public function test_deleting_staff_requires_control_panel_access(): void
+    {
+        $staff = Staff::create(['name' => 'Locked', 'status' => 'active']);
+        $plain = $this->makeGuestUser($this->tenant, 'Plain', ['email' => 'plain3@test-clinic.test']);
+
+        $this->actingAsTenantUser($plain, $this->tenant)
+            ->deleteJson("/api/staff/{$staff->id}")
+            ->assertStatus(403);
+    }
+
+    public function test_a_staff_member_with_no_linked_account_can_be_deleted(): void
+    {
+        $staff = Staff::create(['name' => 'No Accounts', 'status' => 'active']);
+
+        $this->acting()->deleteJson("/api/staff/{$staff->id}")->assertOk();
+
+        $this->assertDatabaseMissing('staff', ['id' => $staff->id]);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $this->admin->id,
+            'action' => 'staff.deleted',
+            'subject_id' => $staff->id,
+        ]);
+    }
+
+    public function test_deleting_staff_is_blocked_while_a_user_account_is_linked(): void
+    {
+        $staff = Staff::create(['name' => 'Has Account', 'status' => 'active']);
+        User::create([
+            'staff_id' => $staff->id, 'email' => 'linked@test-clinic.test',
+            'password' => bcrypt('x'), 'status' => 'active',
+        ]);
+
+        $this->acting()->deleteJson("/api/staff/{$staff->id}")->assertStatus(422);
+
+        $this->assertDatabaseHas('staff', ['id' => $staff->id]);
+    }
 }

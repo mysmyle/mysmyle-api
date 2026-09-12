@@ -96,6 +96,7 @@ Route::middleware(['tenant'])->group(function () {
             });
             Route::post('/staff', [StaffController::class, 'store'])->middleware('permission:CP.STAFF,add');
             Route::put('/staff/{staffId}', [StaffController::class, 'update'])->middleware('permission:CP.STAFF,edit');
+            Route::delete('/staff/{staffId}', [StaffController::class, 'destroy'])->middleware('permission:CP.STAFF,edit');
 
             // User Accounts (incl. their per-user role / module / station access)
             Route::middleware('permission:CP.USERS,view')->group(function () {
