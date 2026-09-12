@@ -95,6 +95,7 @@ class AuthController extends Controller
         return response()->json([
             'user' => $response,
             'tenant_id' => session('tenant_id'),
+            'is_impersonated' => (bool) session('impersonator_landlord_admin_id'),
         ]);
     }
 }

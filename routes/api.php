@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Landlord\AuditLogController as LandlordAuditLogController;
+use App\Http\Controllers\Landlord\ImpersonationController as LandlordImpersonationController;
 use App\Http\Controllers\Landlord\LandlordAdminController;
 use App\Http\Controllers\Landlord\LandlordAuthController;
 use App\Http\Controllers\Landlord\LandlordSetPasswordController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\AuthController;
 use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\DesignationController;
+use App\Http\Controllers\Tenant\ImpersonationController;
 use App\Http\Controllers\Tenant\ModuleController;
 use App\Http\Controllers\Tenant\PasswordController;
 use App\Http\Controllers\Tenant\RoleController;
@@ -44,6 +46,8 @@ Route::middleware(['landlord.admin'])->group(function () {
     Route::put('/landlord/admins/{adminId}', [LandlordAdminController::class, 'update']);
     Route::post('/landlord/admins/{adminId}/resend-setup-link', [LandlordAdminController::class, 'resendSetupLink']);
     Route::post('/landlord/admins/{adminId}/reset-password', [LandlordAdminController::class, 'resetPassword']);
+    Route::get('/landlord/tenants/{tenantId}/users', [LandlordImpersonationController::class, 'index']);
+    Route::post('/landlord/tenants/{tenantId}/impersonate/{userId}', [LandlordImpersonationController::class, 'start']);
 });
 
 // Public — the emailed set-password link for an invited landlord admin.
@@ -67,6 +71,7 @@ Route::middleware(['tenant'])->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/password', [PasswordController::class, 'update']);
     Route::get('/password-policy', [PasswordController::class, 'policy']);
+    Route::post('/impersonate/stop', [ImpersonationController::class, 'stop']);
 
     // Everything else is blocked while must_change_password is set.
     Route::middleware('password.set')->group(function () {
