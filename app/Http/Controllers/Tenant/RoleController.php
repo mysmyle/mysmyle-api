@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Role;
 use App\Models\Tenant\RoleModuleAccess;
+use App\Models\Tenant\User;
 use App\Services\ModuleAccessService;
 use App\Services\UserRoleService;
 use App\Support\TenantCache;
@@ -104,5 +105,26 @@ class RoleController extends Controller
             'role_id' => $role->id,
             'users_resynced' => $count,
         ]);
+    }
+
+    /** Blocked while any user currently holds the role — reassign them first. */
+    public function destroy(Request $request, int $roleId)
+    {
+        $role = Role::findOrFail($roleId);
+
+        if (User::where('role_id', $role->id)->exists()) {
+            throw ValidationException::withMessages([
+                'role' => ['This role still has users assigned to it. Reassign them first.'],
+            ]);
+        }
+
+        $role->delete();
+
+        AuditLog::record($request->user()->id, 'role.deleted', Role::class, $roleId, [
+            'department_id' => $role->department_id,
+            'designation_id' => $role->designation_id,
+        ]);
+
+        return response()->json(['message' => 'Role deleted.']);
     }
 }

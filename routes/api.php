@@ -70,9 +70,12 @@ Route::middleware(['tenant'])->group(function () {
                 Route::post('/roles', [RoleController::class, 'store']);
             });
             Route::middleware('permission:CP.ROLES,edit')->group(function () {
+                Route::put('/departments/{departmentId}', [DepartmentController::class, 'update']);
                 Route::put('/roles/{roleId}/modules/{moduleId}/access', [RoleController::class, 'updateModuleAccess']);
                 Route::post('/roles/{roleId}/resync', [RoleController::class, 'resync']);
                 Route::put('/roles/{role}/stations/{stationId}/permissions', [RolePermissionController::class, 'updateForStation']);
+                Route::delete('/departments/{departmentId}', [DepartmentController::class, 'destroy']);
+                Route::delete('/roles/{roleId}', [RoleController::class, 'destroy']);
             });
 
             // Modules & Designations — read-only catalog
