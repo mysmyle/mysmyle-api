@@ -7,9 +7,12 @@ use App\Models\Landlord\AuditLog;
 use App\Models\Landlord\PasswordSetupToken;
 use App\Models\Landlord\Tenant;
 use App\Models\Landlord\TenantUser;
+use App\Models\Tenant\User;
 use App\Services\PasswordSetupService;
+use App\Services\TenantConnectionResolver;
 use App\Services\TenantProvisioningService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class TenantManagementController extends Controller
 {
@@ -73,5 +76,48 @@ class TenantManagementController extends Controller
         AuditLog::record($request->user()->id, 'tenant.setup_link_resent', Tenant::class, $tenant->id, [], $tenant->id);
 
         return response()->json(['message' => 'A new set-password link was emailed to the admin.']);
+    }
+
+    /**
+     * Blocks every tenant user immediately — ResolveTenantConnection rejects
+     * any request whose tenant isn't `active` on every call. Existing sessions
+     * are also explicitly invalidated, so a later reactivate doesn't silently
+     * hand old sessions access back without a fresh login.
+     */
+    public function suspend(Request $request, int $tenantId, TenantConnectionResolver $resolver)
+    {
+        $tenant = Tenant::findOrFail($tenantId);
+
+        if ($tenant->status !== Tenant::STATUS_ACTIVE) {
+            throw ValidationException::withMessages([
+                'status' => ['Only an active tenant can be suspended.'],
+            ]);
+        }
+
+        $tenant->update(['status' => Tenant::STATUS_SUSPENDED]);
+
+        $resolver->bind($tenant);
+        User::query()->update(['sessions_invalidated_at' => now()]);
+
+        AuditLog::record($request->user()->id, 'tenant.suspended', Tenant::class, $tenant->id, [], $tenant->id);
+
+        return response()->json(['tenant' => $tenant]);
+    }
+
+    public function reactivate(Request $request, int $tenantId)
+    {
+        $tenant = Tenant::findOrFail($tenantId);
+
+        if ($tenant->status !== Tenant::STATUS_SUSPENDED) {
+            throw ValidationException::withMessages([
+                'status' => ['Only a suspended tenant can be reactivated.'],
+            ]);
+        }
+
+        $tenant->update(['status' => Tenant::STATUS_ACTIVE]);
+
+        AuditLog::record($request->user()->id, 'tenant.reactivated', Tenant::class, $tenant->id, [], $tenant->id);
+
+        return response()->json(['tenant' => $tenant]);
     }
 }

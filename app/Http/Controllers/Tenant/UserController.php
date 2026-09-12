@@ -131,4 +131,19 @@ class UserController extends Controller
             'setup_email' => $result['setup_email'] ?? null,
         ]);
     }
+
+    /**
+     * Admin action: immediately invalidate this user's current session(s),
+     * without touching their password. ResolveTenantConnection rejects any
+     * session issued before this timestamp on its very next request.
+     */
+    public function forceLogout(Request $request, int $userId)
+    {
+        $user = User::findOrFail($userId);
+        $user->forceFill(['sessions_invalidated_at' => now()])->save();
+
+        AuditLog::record($request->user()->id, 'user.force_logged_out', User::class, $user->id);
+
+        return response()->json(['message' => 'The user has been logged out.']);
+    }
 }

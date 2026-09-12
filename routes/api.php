@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Landlord\AuditLogController as LandlordAuditLogController;
+use App\Http\Controllers\Landlord\LandlordAdminController;
 use App\Http\Controllers\Landlord\LandlordAuthController;
+use App\Http\Controllers\Landlord\LandlordSetPasswordController;
 use App\Http\Controllers\Landlord\SettingsController;
 use App\Http\Controllers\Landlord\TenantManagementController;
 use App\Http\Controllers\SetPasswordController;
@@ -31,9 +33,22 @@ Route::middleware(['landlord.admin'])->group(function () {
     Route::get('/landlord/tenants', [TenantManagementController::class, 'index']);
     Route::post('/landlord/tenants', [TenantManagementController::class, 'store']);
     Route::post('/landlord/tenants/{tenantId}/resend-setup-link', [TenantManagementController::class, 'resendSetupLink']);
+    Route::post('/landlord/tenants/{tenantId}/suspend', [TenantManagementController::class, 'suspend']);
+    Route::post('/landlord/tenants/{tenantId}/reactivate', [TenantManagementController::class, 'reactivate']);
     Route::get('/landlord/settings/password-policy', [SettingsController::class, 'passwordPolicy']);
     Route::put('/landlord/settings/password-policy', [SettingsController::class, 'updatePasswordPolicy']);
     Route::get('/landlord/audit-logs', [LandlordAuditLogController::class, 'index']);
+    Route::get('/landlord/admins', [LandlordAdminController::class, 'index']);
+    Route::post('/landlord/admins', [LandlordAdminController::class, 'store']);
+    Route::put('/landlord/admins/{adminId}', [LandlordAdminController::class, 'update']);
+    Route::post('/landlord/admins/{adminId}/resend-setup-link', [LandlordAdminController::class, 'resendSetupLink']);
+    Route::post('/landlord/admins/{adminId}/reset-password', [LandlordAdminController::class, 'resetPassword']);
+});
+
+// Public — the emailed set-password link for an invited landlord admin.
+Route::middleware('throttle:10,1')->group(function () {
+    Route::get('/landlord/set-password/{token}', [LandlordSetPasswordController::class, 'show']);
+    Route::post('/landlord/set-password', [LandlordSetPasswordController::class, 'store']);
 });
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
@@ -108,6 +123,7 @@ Route::middleware(['tenant'])->group(function () {
             Route::middleware('permission:CP.USERS,edit')->group(function () {
                 Route::put('/users/{userId}', [UserController::class, 'update']);
                 Route::post('/users/{userId}/password/reset', [UserController::class, 'resetPassword']);
+                Route::post('/users/{userId}/force-logout', [UserController::class, 'forceLogout']);
                 Route::put('/users/{userId}/role', [UserRoleController::class, 'update']);
                 Route::put('/users/{userId}/modules/{moduleId}/access', [UserModuleAccessController::class, 'update']);
                 Route::put('/users/{userId}/stations/{stationId}/permissions', [UserPermissionController::class, 'updateForStation']);

@@ -62,6 +62,8 @@ class AuthController extends Controller
         session([
             'tenant_id' => $tenant->id,
             'auth_user_id' => $user->id,
+            // compared against users.sessions_invalidated_at on every request
+            'session_issued_at' => now()->timestamp,
         ]);
 
         $user->update(['last_login_at' => now()]);

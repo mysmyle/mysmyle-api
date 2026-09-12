@@ -40,6 +40,15 @@ class ResolveTenantConnection
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        // A force-logout (single user or a whole tenant on suspend) sets this;
+        // any session issued before it — even one still valid in the session
+        // store — is rejected.
+        $issuedAt = session('session_issued_at');
+
+        if ($user->sessions_invalidated_at && (! $issuedAt || $issuedAt < $user->sessions_invalidated_at->timestamp)) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
         $request->setUserResolver(fn () => $user);
 
         return $next($request);

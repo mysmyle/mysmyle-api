@@ -80,10 +80,14 @@ abstract class TestCase extends BaseTestCase
         $connection->statement('SET FOREIGN_KEY_CHECKS=1');
     }
 
-    protected function actingAsTenantUser(User $user, Tenant $tenant): static
+    protected function actingAsTenantUser(User $user, Tenant $tenant, array $session = []): static
     {
         return $this->withHeader('Origin', 'http://localhost')
-            ->withSession(['tenant_id' => $tenant->id, 'auth_user_id' => $user->id]);
+            ->withSession($session + [
+                'tenant_id' => $tenant->id,
+                'auth_user_id' => $user->id,
+                'session_issued_at' => now()->timestamp,
+            ]);
     }
 
     protected function actingAsLandlordAdmin(LandlordAdmin $admin): static

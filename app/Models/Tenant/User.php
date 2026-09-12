@@ -22,6 +22,7 @@ class User extends Authenticatable
         'password' => 'hashed',
         'last_login_at' => 'datetime',
         'must_change_password' => 'boolean',
+        'sessions_invalidated_at' => 'datetime',
     ];
 
     public function staff()

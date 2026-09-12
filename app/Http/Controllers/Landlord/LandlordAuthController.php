@@ -19,6 +19,12 @@ class LandlordAuthController extends Controller
 
         $admin = LandlordAdmin::where('email', $credentials['email'])->first();
 
+        if ($admin && $admin->password === null) {
+            throw ValidationException::withMessages([
+                'email' => ['This account has not been set up yet. Check your email for the set-password link.'],
+            ]);
+        }
+
         if (! $admin || ! Hash::check($credentials['password'], $admin->password)) {
             throw ValidationException::withMessages([
                 'email' => ['Invalid credentials.'],
