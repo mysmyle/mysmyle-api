@@ -19,8 +19,9 @@ class RoleController extends Controller
     public function index(Request $request)
     {
         // Each role serializes its designation via the model's appended accessor.
+        // moduleAccess is eager-loaded for the module access matrix.
         return response()->json([
-            'roles' => Role::with('department')->get(),
+            'roles' => Role::with('department', 'moduleAccess')->get(),
         ]);
     }
 
