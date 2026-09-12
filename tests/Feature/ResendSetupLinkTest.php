@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\SetPasswordLinkMail;
 use App\Models\Landlord\LandlordAdmin;
+use App\Models\Landlord\TenantUser;
 use App\Models\Tenant\User;
 use App\Services\PasswordSetupService;
 use Illuminate\Support\Facades\Hash;
@@ -61,6 +62,19 @@ class ResendSetupLinkTest extends TestCase
             ->getJson('/api/landlord/tenants')
             ->assertOk()
             ->assertJsonPath('tenants.0.setup_pending', false);
+    }
+
+    public function test_the_tenant_list_includes_the_active_user_count(): void
+    {
+        // $this->admin is already active; add one more active and one inactive.
+        $this->makeTenantUser($this->tenant, ['email' => 'second@test-clinic.test']);
+        $inactive = $this->makeTenantUser($this->tenant, ['email' => 'inactive@test-clinic.test']);
+        TenantUser::where('email', $inactive->email)->update(['status' => 'inactive']);
+
+        $this->actingAsLandlordAdmin($this->superAdmin)
+            ->getJson('/api/landlord/tenants')
+            ->assertOk()
+            ->assertJsonPath('tenants.0.active_users_count', 2);
     }
 
     public function test_a_super_admin_can_resend_the_link(): void

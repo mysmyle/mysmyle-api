@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Landlord\AuditLog;
 use App\Models\Landlord\PasswordSetupToken;
 use App\Models\Landlord\Tenant;
+use App\Models\Landlord\TenantUser;
 use App\Services\PasswordSetupService;
 use App\Services\TenantProvisioningService;
 use Illuminate\Http\Request;
@@ -16,11 +17,20 @@ class TenantManagementController extends Controller
     {
         $pending = PasswordSetupToken::whereNull('used_at')->pluck('tenant_id')->flip();
 
+        // Active user count comes from the landlord-side login row, which is kept
+        // in lockstep with the tenant-side user's status — no per-tenant DB
+        // connection needed for a platform-wide list.
+        $activeUserCounts = TenantUser::where('status', 'active')
+            ->selectRaw('tenant_id, count(*) as count')
+            ->groupBy('tenant_id')
+            ->pluck('count', 'tenant_id');
+
         $tenants = Tenant::all([
             'id', 'name', 'slug', 'db_name', 'status', 'provision_error', 'provisioned_at',
         ])->map(fn (Tenant $tenant) => $tenant->toArray() + [
             // the admin still has an unused set-password link
             'setup_pending' => $pending->has($tenant->id),
+            'active_users_count' => (int) $activeUserCounts->get($tenant->id, 0),
         ]);
 
         return response()->json(['tenants' => $tenants]);
