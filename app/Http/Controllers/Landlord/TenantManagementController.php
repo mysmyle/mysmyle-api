@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
+use App\Models\Landlord\AuditLog;
 use App\Models\Landlord\PasswordSetupToken;
 use App\Models\Landlord\Tenant;
 use App\Services\PasswordSetupService;
@@ -40,6 +41,11 @@ class TenantManagementController extends Controller
             $validated['admin_email'],
         );
 
+        AuditLog::record($request->user()->id, 'tenant.created', Tenant::class, $tenant->id, [
+            'name' => $validated['tenant_name'],
+            'admin_email' => $validated['admin_email'],
+        ], $tenant->id);
+
         // 202: the tenant record exists; the database, admin account and
         // set-password email are built by a queued job.
         return response()->json(['tenant' => $tenant], 202);
@@ -53,6 +59,8 @@ class TenantManagementController extends Controller
         $tenant = Tenant::findOrFail($tenantId);
 
         $service->reissueForTenant($tenant);
+
+        AuditLog::record($request->user()->id, 'tenant.setup_link_resent', Tenant::class, $tenant->id, [], $tenant->id);
 
         return response()->json(['message' => 'A new set-password link was emailed to the admin.']);
     }

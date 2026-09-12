@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Department;
 use App\Services\DepartmentService;
 use Illuminate\Http\Request;
@@ -23,6 +24,10 @@ class DepartmentController extends Controller
         ]);
 
         $department = $service->createWithRoles($validated['name']);
+
+        AuditLog::record($request->user()->id, 'department.created', Department::class, $department->id, [
+            'name' => $department->name,
+        ]);
 
         return response()->json(['department' => $department], 201);
     }

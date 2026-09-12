@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Role;
 use App\Models\Tenant\RoleModuleAccess;
 use App\Services\ModuleAccessService;
@@ -41,6 +42,8 @@ class RoleController extends Controller
 
         $role = Role::create($validated)->load('department');
 
+        AuditLog::record($request->user()->id, 'role.created', Role::class, $role->id, $validated);
+
         return response()->json(['role' => $role], 201);
     }
 
@@ -69,6 +72,11 @@ class RoleController extends Controller
             $moduleAccess->syncRole($role, $moduleId, $validated['allowed']);
         });
 
+        AuditLog::record($request->user()->id, 'role.module_access_updated', Role::class, $role->id, [
+            'module_id' => $moduleId,
+            'allowed' => $validated['allowed'],
+        ]);
+
         // Role templates don't auto-propagate to assigned users (see resync).
         return response()->json([
             'role_id' => $role->id,
@@ -87,6 +95,10 @@ class RoleController extends Controller
         $role = Role::findOrFail($roleId);
 
         $count = $service->resyncRoleUsers($role->id, TenantCache::currentTenantId());
+
+        AuditLog::record($request->user()->id, 'role.resynced', Role::class, $role->id, [
+            'users_resynced' => $count,
+        ]);
 
         return response()->json([
             'role_id' => $role->id,

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
+use App\Models\Landlord\AuditLog;
 use App\Support\PasswordPolicy;
 use App\Support\SettingsRepository;
 use Illuminate\Http\Request;
@@ -59,6 +60,8 @@ class SettingsController extends Controller
         ];
 
         $settings->put('password_policy', $policy);
+
+        AuditLog::record($request->user()->id, 'settings.password_policy_updated', null, null, $policy);
 
         return response()->json([
             'password_policy' => PasswordPolicy::current()->toArray(),

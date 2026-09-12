@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\User;
 use App\Services\UserRoleService;
 use App\Support\TenantCache;
@@ -19,6 +20,10 @@ class UserRoleController extends Controller
         ]);
 
         $service->assignRole($user, $validated['role_id'], TenantCache::currentTenantId());
+
+        AuditLog::record($request->user()->id, 'user.role_updated', User::class, $user->id, [
+            'role_id' => $validated['role_id'],
+        ]);
 
         $user = User::with(['staff', 'role.department'])->findOrFail($userId);
 

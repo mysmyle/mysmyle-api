@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\User;
 use App\Models\Tenant\UserModuleAccess;
 use App\Services\ModuleAccessService;
@@ -29,6 +30,11 @@ class UserModuleAccessController extends Controller
             // System modules carry their stations with them (Control Panel, …).
             $moduleAccess->syncUser($user, $moduleId, $validated['allowed'], TenantCache::currentTenantId());
         });
+
+        AuditLog::record($request->user()->id, 'user.module_access_updated', User::class, $user->id, [
+            'module_id' => $moduleId,
+            'allowed' => $validated['allowed'],
+        ]);
 
         return response()->json([
             'user_id' => $user->id,

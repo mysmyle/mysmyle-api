@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Landlord\Permission;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\User;
 use App\Models\Tenant\UserHasPermission;
 use App\Support\TenantCache;
@@ -48,6 +49,11 @@ class UserPermissionController extends Controller
         });
 
         TenantCache::forgetUserPermissions(TenantCache::currentTenantId(), $user->id);
+
+        AuditLog::record($request->user()->id, 'user.station_permissions_updated', User::class, $user->id, [
+            'station_id' => $stationId,
+            'permission_ids' => $validated['permission_ids'],
+        ]);
 
         return response()->json([
             'user_id' => $user->id,

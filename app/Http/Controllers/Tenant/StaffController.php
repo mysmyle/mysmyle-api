@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Staff;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -45,12 +46,17 @@ class StaffController extends Controller
             'status' => 'active',
         ]);
 
+        AuditLog::record($request->user()->id, 'staff.created', Staff::class, $staff->id, [
+            'name' => $staff->name,
+        ]);
+
         return response()->json(['staff' => $staff], 201);
     }
 
     public function update(Request $request, int $staffId)
     {
         $staff = Staff::findOrFail($staffId);
+        $previousStatus = $staff->status;
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -66,6 +72,10 @@ class StaffController extends Controller
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
             'status' => $data['status'],
+        ]);
+
+        AuditLog::record($request->user()->id, 'staff.updated', Staff::class, $staff->id, [
+            'status' => ['from' => $previousStatus, 'to' => $data['status']],
         ]);
 
         return response()->json(['staff' => $this->present($staff)]);

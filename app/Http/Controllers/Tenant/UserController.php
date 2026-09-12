@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Staff;
 use App\Models\Tenant\User;
 use App\Services\UserAccountService;
@@ -61,6 +62,11 @@ class UserController extends Controller
 
         $user = User::with(['staff', 'role.department'])->findOrFail($result['user']->id);
 
+        AuditLog::record($request->user()->id, 'user.created', User::class, $user->id, [
+            'email' => $user->email,
+            'type' => $validated['type'],
+        ]);
+
         return response()->json([
             'user' => $user->detailedArray(),
             'temporary_password' => $result['temporary_password'] ?? null,
@@ -72,6 +78,7 @@ class UserController extends Controller
     {
         $user = User::findOrFail($userId);
         $isGuest = $user->staff_id === null;
+        $previousStatus = $user->status;
 
         $validated = $request->validate([
             // Only guests carry their own name; staff-linked accounts use staff.name.
@@ -94,6 +101,10 @@ class UserController extends Controller
 
         $fresh = User::with(['staff', 'role.department'])->findOrFail($userId);
 
+        AuditLog::record($request->user()->id, 'user.updated', User::class, $user->id, [
+            'status' => ['from' => $previousStatus, 'to' => $validated['status']],
+        ]);
+
         return response()->json(['user' => $fresh->detailedArray()]);
     }
 
@@ -112,6 +123,8 @@ class UserController extends Controller
         $user = User::findOrFail($userId);
 
         $result = $service->resetPassword(TenantCache::currentTenantId(), $user);
+
+        AuditLog::record($request->user()->id, 'user.password_reset', User::class, $user->id);
 
         return response()->json([
             'temporary_password' => $result['temporary_password'] ?? null,

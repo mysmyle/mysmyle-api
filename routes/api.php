@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\Landlord\AuditLogController as LandlordAuditLogController;
 use App\Http\Controllers\Landlord\LandlordAuthController;
 use App\Http\Controllers\Landlord\SettingsController;
 use App\Http\Controllers\Landlord\TenantManagementController;
 use App\Http\Controllers\SetPasswordController;
+use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\AuthController;
 use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\DesignationController;
@@ -30,6 +32,7 @@ Route::middleware(['landlord.admin'])->group(function () {
     Route::post('/landlord/tenants/{tenantId}/resend-setup-link', [TenantManagementController::class, 'resendSetupLink']);
     Route::get('/landlord/settings/password-policy', [SettingsController::class, 'passwordPolicy']);
     Route::put('/landlord/settings/password-policy', [SettingsController::class, 'updatePasswordPolicy']);
+    Route::get('/landlord/audit-logs', [LandlordAuditLogController::class, 'index']);
 });
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
@@ -76,6 +79,11 @@ Route::middleware(['tenant'])->group(function () {
             Route::middleware('permission:CP.CATALOG,view')->group(function () {
                 Route::get('/designations', [DesignationController::class, 'index']);
                 Route::get('/modules/{module}/stations', [StationController::class, 'index']);
+            });
+
+            // Audit Log — read-only history of Control Panel actions
+            Route::middleware('permission:CP.AUDIT,view')->group(function () {
+                Route::get('/audit-logs', [AuditLogController::class, 'index']);
             });
 
             // Staff Members

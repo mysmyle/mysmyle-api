@@ -72,6 +72,7 @@ class StationSeeder extends Seeder
             'CP.USERS' => 'User Accounts',
             'CP.ROLES' => 'Departments & Roles',
             'CP.CATALOG' => 'Modules & Designations',
+            'CP.AUDIT' => 'Audit Log',
         ];
 
         foreach ($sections as $code => $name) {

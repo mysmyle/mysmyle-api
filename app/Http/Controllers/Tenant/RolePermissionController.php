@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Landlord\Permission;
+use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Role;
 use App\Models\Tenant\RoleHasPermission;
 use Illuminate\Http\Request;
@@ -47,6 +48,11 @@ class RolePermissionController extends Controller
                 RoleHasPermission::insert($rows);
             }
         });
+
+        AuditLog::record($request->user()->id, 'role.station_permissions_updated', Role::class, $role->id, [
+            'station_id' => $stationId,
+            'permission_ids' => $validated['permission_ids'],
+        ]);
 
         // A role is a template. Editing it does NOT change users already assigned
         // to it (their permissions were snapshot-copied at assignment time) — so

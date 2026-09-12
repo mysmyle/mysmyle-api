@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Hash;
 trait BuildsTenantData
 {
     /** CP admin sections, mirrors StationSeeder::seedControlPanelStations. */
-    protected array $cpStations = ['CP.STAFF', 'CP.USERS', 'CP.ROLES', 'CP.CATALOG'];
+    protected array $cpStations = ['CP.STAFF', 'CP.USERS', 'CP.ROLES', 'CP.CATALOG', 'CP.AUDIT'];
 
     protected function seedModules(): void
     {
