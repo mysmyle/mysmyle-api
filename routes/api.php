@@ -31,6 +31,7 @@ Route::middleware(['landlord.admin'])->group(function () {
     Route::post('/landlord/logout', [LandlordAuthController::class, 'logout']);
     Route::get('/landlord/me', [LandlordAuthController::class, 'me']);
     Route::get('/landlord/tenants', [TenantManagementController::class, 'index']);
+    Route::get('/landlord/tenants/{tenantId}', [TenantManagementController::class, 'show']);
     Route::post('/landlord/tenants', [TenantManagementController::class, 'store']);
     Route::post('/landlord/tenants/{tenantId}/resend-setup-link', [TenantManagementController::class, 'resendSetupLink']);
     Route::post('/landlord/tenants/{tenantId}/suspend', [TenantManagementController::class, 'suspend']);

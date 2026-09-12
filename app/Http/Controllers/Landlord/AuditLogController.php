@@ -11,6 +11,7 @@ class AuditLogController extends Controller
     public function index(Request $request)
     {
         $logs = AuditLog::with('admin:id,name,email', 'tenant:id,name,slug')
+            ->when($request->query('tenant_id'), fn ($q, $tenantId) => $q->where('tenant_id', $tenantId))
             ->latest('id')
             ->paginate(50);
 

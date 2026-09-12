@@ -7,6 +7,9 @@ use App\Models\Landlord\AuditLog;
 use App\Models\Landlord\PasswordSetupToken;
 use App\Models\Landlord\Tenant;
 use App\Models\Landlord\TenantUser;
+use App\Models\Tenant\Department;
+use App\Models\Tenant\Role;
+use App\Models\Tenant\Staff;
 use App\Models\Tenant\User;
 use App\Services\PasswordSetupService;
 use App\Services\TenantConnectionResolver;
@@ -37,6 +40,49 @@ class TenantManagementController extends Controller
         ]);
 
         return response()->json(['tenants' => $tenants]);
+    }
+
+    /**
+     * Full detail for one tenant: the platform-side row plus, for a tenant
+     * whose database actually exists (active or suspended — not still
+     * provisioning or failed), a snapshot of its own staff/department/role
+     * counts and last login.
+     */
+    public function show(Request $request, int $tenantId, TenantConnectionResolver $resolver)
+    {
+        $tenant = Tenant::findOrFail($tenantId);
+
+        $pending = PasswordSetupToken::where('tenant_id', $tenant->id)->whereNull('used_at')->exists();
+
+        $userCounts = TenantUser::where('tenant_id', $tenant->id)
+            ->selectRaw("count(*) as total, sum(status = 'active') as active")
+            ->first();
+
+        $stats = [
+            'staff_count' => null,
+            'department_count' => null,
+            'role_count' => null,
+            'last_login_at' => null,
+        ];
+
+        if (in_array($tenant->status, [Tenant::STATUS_ACTIVE, Tenant::STATUS_SUSPENDED], true)) {
+            $resolver->bind($tenant); // works even while suspended — no status gate
+
+            $stats = [
+                'staff_count' => Staff::count(),
+                'department_count' => Department::count(),
+                'role_count' => Role::count(),
+                'last_login_at' => User::max('last_login_at'),
+            ];
+        }
+
+        return response()->json([
+            'tenant' => $tenant->toArray() + [
+                'setup_pending' => $pending,
+                'active_users_count' => (int) $userCounts->active,
+                'total_users_count' => (int) $userCounts->total,
+            ] + $stats,
+        ]);
     }
 
     public function store(Request $request, TenantProvisioningService $service)
