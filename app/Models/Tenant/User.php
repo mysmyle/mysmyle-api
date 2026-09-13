@@ -14,7 +14,7 @@ class User extends Authenticatable
 
     protected $connection = 'tenant';
 
-    protected $fillable = ['staff_id', 'role_id', 'name', 'email', 'password', 'status', 'must_change_password'];
+    protected $fillable = ['staff_id', 'role_id', 'name', 'email', 'password', 'status', 'must_change_password', 'created_by', 'disabled_by', 'disabled_at'];
 
     protected $hidden = ['password'];
 
@@ -22,6 +22,8 @@ class User extends Authenticatable
         'password' => 'hashed',
         'last_login_at' => 'datetime',
         'must_change_password' => 'boolean',
+        'sessions_invalidated_at' => 'datetime',
+        'disabled_at' => 'datetime',
     ];
 
     public function staff()
@@ -32,6 +34,16 @@ class User extends Authenticatable
     public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function disabledBy()
+    {
+        return $this->belongsTo(User::class, 'disabled_by');
     }
 
     public function permissions()
@@ -74,6 +86,10 @@ class User extends Authenticatable
             'last_login_at' => $this->last_login_at,
             'staff' => $this->staff,
             'role' => $this->role, // designation is appended by the Role model
+            'created_at' => $this->created_at,
+            'created_by' => $this->createdBy?->displayName(),
+            'disabled_at' => $this->disabled_at,
+            'disabled_by' => $this->disabledBy?->displayName(),
         ];
     }
 

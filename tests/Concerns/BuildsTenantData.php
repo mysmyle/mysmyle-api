@@ -29,12 +29,23 @@ trait BuildsTenantData
         Module::updateOrCreate(['abbreviation' => 'RAP'], [
             'name' => 'Registrations & Appointments', 'kind' => Module::KIND_CLINICAL, 'is_visible' => true,
         ]);
+        $sqe = Module::updateOrCreate(['abbreviation' => 'SQE'], [
+            'name' => 'Staff Qualification & Education', 'kind' => Module::KIND_CLINICAL, 'is_visible' => true,
+        ]);
 
         foreach ($this->cpStations as $code) {
             $station = Station::updateOrCreate(['code' => $code], ['module_id' => $cp->id, 'name' => $code]);
             foreach (['view', 'add', 'edit'] as $action) {
                 Permission::updateOrCreate(['station_id' => $station->id, 'action' => $action]);
             }
+        }
+
+        $qualifications = Station::updateOrCreate(
+            ['code' => 'SQE.QUALIFICATIONS'],
+            ['module_id' => $sqe->id, 'name' => 'Staff Qualifications'],
+        );
+        foreach (['view', 'add', 'edit'] as $action) {
+            Permission::updateOrCreate(['station_id' => $qualifications->id, 'action' => $action]);
         }
     }
 
@@ -144,6 +155,7 @@ trait BuildsTenantData
             'email' => 'super@mysmyle.test',
             'password' => Hash::make('password'),
             'status' => 'active',
+            'role' => LandlordAdmin::ROLE_SUPER_ADMIN,
         ], $attributes));
     }
 }

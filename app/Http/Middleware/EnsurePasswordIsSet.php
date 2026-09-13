@@ -17,7 +17,9 @@ class EnsurePasswordIsSet
     {
         $user = $request->user();
 
-        if ($user && $user->must_change_password) {
+        // A support admin impersonating this account isn't meant to complete
+        // the real user's own first-login flow on their behalf.
+        if ($user && $user->must_change_password && ! session('impersonator_landlord_admin_id')) {
             return response()->json([
                 'message' => 'You must set a new password before continuing.',
                 'code' => 'password_change_required',

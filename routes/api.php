@@ -1,7 +1,11 @@
 <?php
 
 use App\Http\Controllers\Landlord\AuditLogController as LandlordAuditLogController;
+use App\Http\Controllers\Landlord\ImpersonationController as LandlordImpersonationController;
+use App\Http\Controllers\Landlord\LandlordAdminController;
 use App\Http\Controllers\Landlord\LandlordAuthController;
+use App\Http\Controllers\Landlord\LandlordSetPasswordController;
+use App\Http\Controllers\Landlord\PasswordController as LandlordPasswordController;
 use App\Http\Controllers\Landlord\SettingsController;
 use App\Http\Controllers\Landlord\TenantManagementController;
 use App\Http\Controllers\SetPasswordController;
@@ -9,11 +13,13 @@ use App\Http\Controllers\Tenant\AuditLogController;
 use App\Http\Controllers\Tenant\AuthController;
 use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\DesignationController;
+use App\Http\Controllers\Tenant\ImpersonationController;
 use App\Http\Controllers\Tenant\ModuleController;
 use App\Http\Controllers\Tenant\PasswordController;
 use App\Http\Controllers\Tenant\RoleController;
 use App\Http\Controllers\Tenant\RolePermissionController;
 use App\Http\Controllers\Tenant\StaffController;
+use App\Http\Controllers\Tenant\StaffQualificationController;
 use App\Http\Controllers\Tenant\StationController;
 use App\Http\Controllers\Tenant\UserController;
 use App\Http\Controllers\Tenant\UserModuleAccessController;
@@ -27,12 +33,36 @@ Route::post('/landlord/login', [LandlordAuthController::class, 'login'])->middle
 Route::middleware(['landlord.admin'])->group(function () {
     Route::post('/landlord/logout', [LandlordAuthController::class, 'logout']);
     Route::get('/landlord/me', [LandlordAuthController::class, 'me']);
+    Route::post('/landlord/password', [LandlordPasswordController::class, 'update']);
+
+    // Available to every active admin, regardless of tier — read access plus
+    // the two support-safe actions (resend a lost link, impersonate).
     Route::get('/landlord/tenants', [TenantManagementController::class, 'index']);
-    Route::post('/landlord/tenants', [TenantManagementController::class, 'store']);
+    Route::get('/landlord/tenants/{tenantId}', [TenantManagementController::class, 'show']);
     Route::post('/landlord/tenants/{tenantId}/resend-setup-link', [TenantManagementController::class, 'resendSetupLink']);
-    Route::get('/landlord/settings/password-policy', [SettingsController::class, 'passwordPolicy']);
-    Route::put('/landlord/settings/password-policy', [SettingsController::class, 'updatePasswordPolicy']);
     Route::get('/landlord/audit-logs', [LandlordAuditLogController::class, 'index']);
+    Route::get('/landlord/tenants/{tenantId}/users', [LandlordImpersonationController::class, 'index']);
+    Route::post('/landlord/tenants/{tenantId}/impersonate/{userId}', [LandlordImpersonationController::class, 'start']);
+
+    // super_admin only — tenant lifecycle, platform settings, admin management.
+    Route::middleware(['landlord.super'])->group(function () {
+        Route::post('/landlord/tenants', [TenantManagementController::class, 'store']);
+        Route::post('/landlord/tenants/{tenantId}/suspend', [TenantManagementController::class, 'suspend']);
+        Route::post('/landlord/tenants/{tenantId}/reactivate', [TenantManagementController::class, 'reactivate']);
+        Route::get('/landlord/settings/password-policy', [SettingsController::class, 'passwordPolicy']);
+        Route::put('/landlord/settings/password-policy', [SettingsController::class, 'updatePasswordPolicy']);
+        Route::get('/landlord/admins', [LandlordAdminController::class, 'index']);
+        Route::post('/landlord/admins', [LandlordAdminController::class, 'store']);
+        Route::put('/landlord/admins/{adminId}', [LandlordAdminController::class, 'update']);
+        Route::post('/landlord/admins/{adminId}/resend-setup-link', [LandlordAdminController::class, 'resendSetupLink']);
+        Route::post('/landlord/admins/{adminId}/reset-password', [LandlordAdminController::class, 'resetPassword']);
+    });
+});
+
+// Public — the emailed set-password link for an invited landlord admin.
+Route::middleware('throttle:10,1')->group(function () {
+    Route::get('/landlord/set-password/{token}', [LandlordSetPasswordController::class, 'show']);
+    Route::post('/landlord/set-password', [LandlordSetPasswordController::class, 'store']);
 });
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
@@ -50,6 +80,7 @@ Route::middleware(['tenant'])->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/password', [PasswordController::class, 'update']);
     Route::get('/password-policy', [PasswordController::class, 'policy']);
+    Route::post('/impersonate/stop', [ImpersonationController::class, 'stop']);
 
     // Everything else is blocked while must_change_password is set.
     Route::middleware('password.set')->group(function () {
@@ -96,6 +127,7 @@ Route::middleware(['tenant'])->group(function () {
             });
             Route::post('/staff', [StaffController::class, 'store'])->middleware('permission:CP.STAFF,add');
             Route::put('/staff/{staffId}', [StaffController::class, 'update'])->middleware('permission:CP.STAFF,edit');
+            Route::delete('/staff/{staffId}', [StaffController::class, 'destroy'])->middleware('permission:CP.STAFF,edit');
 
             // User Accounts (incl. their per-user role / module / station access)
             Route::middleware('permission:CP.USERS,view')->group(function () {
@@ -106,9 +138,27 @@ Route::middleware(['tenant'])->group(function () {
             Route::middleware('permission:CP.USERS,edit')->group(function () {
                 Route::put('/users/{userId}', [UserController::class, 'update']);
                 Route::post('/users/{userId}/password/reset', [UserController::class, 'resetPassword']);
+                Route::post('/users/{userId}/force-logout', [UserController::class, 'forceLogout']);
                 Route::put('/users/{userId}/role', [UserRoleController::class, 'update']);
                 Route::put('/users/{userId}/modules/{moduleId}/access', [UserModuleAccessController::class, 'update']);
                 Route::put('/users/{userId}/stations/{stationId}/permissions', [UserPermissionController::class, 'updateForStation']);
+            });
+        });
+
+        // Staff Qualification & Education — clinical module, independent of Control
+        // Panel's CP.STAFF gate. staffOptions exposes only id+name so a holder of
+        // this module doesn't need CP.STAFF access to record a qualification.
+        Route::middleware('module.access:SQE')->group(function () {
+            Route::middleware('permission:SQE.QUALIFICATIONS,view')->group(function () {
+                Route::get('/staff-qualifications', [StaffQualificationController::class, 'index']);
+                Route::get('/staff-qualifications/staff-options', [StaffQualificationController::class, 'staffOptions']);
+                Route::get('/staff-qualifications/{qualificationId}', [StaffQualificationController::class, 'show']);
+            });
+            Route::post('/staff-qualifications', [StaffQualificationController::class, 'store'])
+                ->middleware('permission:SQE.QUALIFICATIONS,add');
+            Route::middleware('permission:SQE.QUALIFICATIONS,edit')->group(function () {
+                Route::put('/staff-qualifications/{qualificationId}', [StaffQualificationController::class, 'update']);
+                Route::delete('/staff-qualifications/{qualificationId}', [StaffQualificationController::class, 'destroy']);
             });
         });
     });

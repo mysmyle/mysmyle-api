@@ -33,7 +33,7 @@ class UserAccountService
      * @param  array{staff_id?: int|null, name?: string|null, email: string, role_id?: int|null}  $data
      * @return array{user: User, temporary_password?: string, setup_email?: string}
      */
-    public function create(int $tenantId, array $data): array
+    public function create(int $tenantId, array $data, ?int $actorId = null): array
     {
         $isStaff = ! empty($data['staff_id']);
         $plainPassword = $isStaff ? null : $this->passwords->generate();
@@ -45,7 +45,7 @@ class UserAccountService
         ]);
 
         try {
-            $user = DB::connection('tenant')->transaction(function () use ($tenantId, $data, $plainPassword, $isStaff) {
+            $user = DB::connection('tenant')->transaction(function () use ($tenantId, $data, $plainPassword, $isStaff, $actorId) {
                 $attributes = [
                     'staff_id' => $data['staff_id'] ?? null,
                     'name' => $data['name'] ?? null,
@@ -53,6 +53,7 @@ class UserAccountService
                     'status' => 'active',
                     // guests are forced to change on first login; staff set their own via the link
                     'must_change_password' => ! $isStaff,
+                    'created_by' => $actorId,
                 ];
 
                 if (! $isStaff) {
@@ -141,21 +142,31 @@ class UserAccountService
      *
      * @param  array{name?: string|null, email: string, status: string, role_id?: int|null}  $data
      */
-    public function update(int $tenantId, User $user, array $data): User
+    public function update(int $tenantId, User $user, array $data, ?int $actorId = null): User
     {
         $loginRow = TenantUser::where('tenant_id', $tenantId)->where('email', $user->email)->firstOrFail();
         $originalEmail = $loginRow->email;
         $originalStatus = $loginRow->status;
+        $isBeingDisabled = $user->status !== 'inactive' && $data['status'] === 'inactive';
+        $isBeingReactivated = $user->status !== 'active' && $data['status'] === 'active';
 
         $loginRow->update(['email' => $data['email'], 'status' => $data['status']]);
 
         try {
-            DB::connection('tenant')->transaction(function () use ($user, $tenantId, $data) {
+            DB::connection('tenant')->transaction(function () use ($user, $tenantId, $data, $actorId, $isBeingDisabled, $isBeingReactivated) {
                 $user->fill([
                     'name' => $data['name'] ?? null,
                     'email' => $data['email'],
                     'status' => $data['status'],
                 ]);
+
+                if ($isBeingDisabled) {
+                    $user->disabled_by = $actorId;
+                    $user->disabled_at = now();
+                } elseif ($isBeingReactivated) {
+                    $user->disabled_by = null;
+                    $user->disabled_at = null;
+                }
 
                 $user->save();
 

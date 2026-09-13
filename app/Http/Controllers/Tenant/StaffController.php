@@ -5,16 +5,20 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Staff;
+use App\Models\Tenant\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class StaffController extends Controller
 {
     public function index(Request $request)
     {
-        $staff = Staff::withCount('users')
+        $staff = Staff::with(['createdBy.staff', 'disabledBy.staff'])
+            ->withCount('users')
             ->orderBy('name')
-            ->get(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status']);
+            ->get(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status', 'created_by', 'disabled_by', 'disabled_at', 'created_at'])
+            ->map(fn (Staff $member) => $this->present($member) + ['users_count' => $member->users_count]);
 
         return response()->json(['staff' => $staff]);
     }
@@ -44,13 +48,14 @@ class StaffController extends Controller
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
             'status' => 'active',
+            'created_by' => $request->user()->id,
         ]);
 
         AuditLog::record($request->user()->id, 'staff.created', Staff::class, $staff->id, [
             'name' => $staff->name,
         ]);
 
-        return response()->json(['staff' => $staff], 201);
+        return response()->json(['staff' => $this->present($staff)], 201);
     }
 
     public function update(Request $request, int $staffId)
@@ -66,12 +71,17 @@ class StaffController extends Controller
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ]);
 
+        $isBeingDisabled = $previousStatus !== 'inactive' && $data['status'] === 'inactive';
+        $isBeingReactivated = $previousStatus !== 'active' && $data['status'] === 'active';
+
         $staff->update([
             'name' => $data['name'],
             'personal_email' => $data['personal_email'],
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
             'status' => $data['status'],
+            'disabled_by' => $isBeingDisabled ? $request->user()->id : ($isBeingReactivated ? null : $staff->disabled_by),
+            'disabled_at' => $isBeingDisabled ? now() : ($isBeingReactivated ? null : $staff->disabled_at),
         ]);
 
         AuditLog::record($request->user()->id, 'staff.updated', Staff::class, $staff->id, [
@@ -81,8 +91,31 @@ class StaffController extends Controller
         return response()->json(['staff' => $this->present($staff)]);
     }
 
+    /** Blocked while any user account is still linked to this staff member. */
+    public function destroy(Request $request, int $staffId)
+    {
+        $staff = Staff::findOrFail($staffId);
+
+        if (User::where('staff_id', $staff->id)->exists()) {
+            throw ValidationException::withMessages([
+                'staff' => ['This staff member still has a user account linked. Remove or reassign it first.'],
+            ]);
+        }
+
+        $staff->delete();
+
+        AuditLog::record($request->user()->id, 'staff.deleted', Staff::class, $staffId, [
+            'name' => $staff->name,
+        ]);
+
+        return response()->json(['message' => 'Staff member deleted.']);
+    }
+
     private function present(Staff $staff): array
     {
-        return $staff->only(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status']);
+        return $staff->only(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status', 'created_at', 'disabled_at']) + [
+            'created_by' => $staff->createdBy?->displayName(),
+            'disabled_by' => $staff->disabledBy?->displayName(),
+        ];
     }
 }

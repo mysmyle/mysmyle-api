@@ -62,6 +62,8 @@ class AuthController extends Controller
         session([
             'tenant_id' => $tenant->id,
             'auth_user_id' => $user->id,
+            // compared against users.sessions_invalidated_at on every request
+            'session_issued_at' => now()->timestamp,
         ]);
 
         $user->update(['last_login_at' => now()]);
@@ -93,6 +95,7 @@ class AuthController extends Controller
         return response()->json([
             'user' => $response,
             'tenant_id' => session('tenant_id'),
+            'is_impersonated' => (bool) session('impersonator_landlord_admin_id'),
         ]);
     }
 }

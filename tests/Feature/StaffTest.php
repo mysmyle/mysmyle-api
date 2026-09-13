@@ -97,6 +97,18 @@ class StaffTest extends TestCase
         $this->assertSame('active', Staff::where('name', 'Ignored Status')->first()->status);
     }
 
+    public function test_records_who_created_the_staff_member_and_when(): void
+    {
+        $this->acting()
+            ->postJson('/api/staff', ['name' => 'Dr Cruz', 'personal_email' => 'dr.cruz@example.com'])
+            ->assertStatus(201)
+            ->assertJsonPath('staff.created_by', 'Admin');
+
+        $staff = Staff::where('name', 'Dr Cruz')->first();
+        $this->assertSame($this->admin->id, $staff->created_by);
+        $this->assertNotNull($staff->created_at);
+    }
+
     public function test_name_is_required(): void
     {
         $this->acting()->postJson('/api/staff', ['name' => ''])
@@ -142,6 +154,55 @@ class StaffTest extends TestCase
         $this->assertSame('Female', $staff->gender);
         $this->assertSame('1985-06-01', $staff->date_of_birth->toDateString());
         $this->assertSame('inactive', $staff->status);
+    }
+
+    public function test_disabling_a_staff_member_records_who_and_when(): void
+    {
+        $staff = Staff::create(['name' => 'Active One', 'status' => 'active']);
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Active One', 'personal_email' => 'active@example.com', 'status' => 'inactive',
+        ])
+            ->assertOk()
+            ->assertJsonPath('staff.disabled_by', 'Admin');
+
+        $fresh = $staff->fresh();
+        $this->assertSame($this->admin->id, $fresh->disabled_by);
+        $this->assertNotNull($fresh->disabled_at);
+    }
+
+    public function test_reactivating_a_staff_member_clears_the_disabled_tracking(): void
+    {
+        $staff = Staff::create(['name' => 'Toggled', 'status' => 'active']);
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Toggled', 'personal_email' => 'toggled@example.com', 'status' => 'inactive',
+        ])->assertOk();
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Toggled', 'personal_email' => 'toggled@example.com', 'status' => 'active',
+        ])
+            ->assertOk()
+            ->assertJsonPath('staff.disabled_by', null);
+
+        $fresh = $staff->fresh();
+        $this->assertNull($fresh->disabled_by);
+        $this->assertNull($fresh->disabled_at);
+    }
+
+    public function test_saving_without_changing_status_does_not_touch_disabled_tracking(): void
+    {
+        $staff = Staff::create(['name' => 'Stable', 'status' => 'active']);
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Stable', 'personal_email' => 'stable@example.com', 'status' => 'inactive',
+        ])->assertOk();
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Stable Renamed', 'personal_email' => 'stable@example.com', 'status' => 'inactive',
+        ])->assertOk();
+
+        $this->assertSame($this->admin->id, $staff->fresh()->disabled_by);
     }
 
     public function test_update_still_validates(): void
@@ -191,5 +252,42 @@ class StaffTest extends TestCase
 
         $this->assertSame(1, $rows->firstWhere('name', 'Has Accounts')['users_count']);
         $this->assertSame(0, $rows->firstWhere('name', 'No Accounts')['users_count']);
+    }
+
+    public function test_deleting_staff_requires_control_panel_access(): void
+    {
+        $staff = Staff::create(['name' => 'Locked', 'status' => 'active']);
+        $plain = $this->makeGuestUser($this->tenant, 'Plain', ['email' => 'plain3@test-clinic.test']);
+
+        $this->actingAsTenantUser($plain, $this->tenant)
+            ->deleteJson("/api/staff/{$staff->id}")
+            ->assertStatus(403);
+    }
+
+    public function test_a_staff_member_with_no_linked_account_can_be_deleted(): void
+    {
+        $staff = Staff::create(['name' => 'No Accounts', 'status' => 'active']);
+
+        $this->acting()->deleteJson("/api/staff/{$staff->id}")->assertOk();
+
+        $this->assertDatabaseMissing('staff', ['id' => $staff->id]);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $this->admin->id,
+            'action' => 'staff.deleted',
+            'subject_id' => $staff->id,
+        ]);
+    }
+
+    public function test_deleting_staff_is_blocked_while_a_user_account_is_linked(): void
+    {
+        $staff = Staff::create(['name' => 'Has Account', 'status' => 'active']);
+        User::create([
+            'staff_id' => $staff->id, 'email' => 'linked@test-clinic.test',
+            'password' => bcrypt('x'), 'status' => 'active',
+        ]);
+
+        $this->acting()->deleteJson("/api/staff/{$staff->id}")->assertStatus(422);
+
+        $this->assertDatabaseHas('staff', ['id' => $staff->id]);
     }
 }

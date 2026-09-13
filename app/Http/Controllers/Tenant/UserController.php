@@ -14,9 +14,11 @@ use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
+    private const WITH_RELATIONS = ['staff', 'role.department', 'createdBy.staff', 'disabledBy.staff'];
+
     public function index(Request $request)
     {
-        $users = User::with(['staff', 'role.department'])->get()
+        $users = User::with(self::WITH_RELATIONS)->get()
             ->map(fn (User $user) => $user->listArray());
 
         return response()->json(['users' => $users]);
@@ -24,7 +26,7 @@ class UserController extends Controller
 
     public function show(Request $request, int $userId)
     {
-        $user = User::with(['staff', 'role.department'])->findOrFail($userId);
+        $user = User::with(self::WITH_RELATIONS)->findOrFail($userId);
 
         return response()->json(['user' => $user->detailedArray()]);
     }
@@ -58,9 +60,9 @@ class UserController extends Controller
             'name' => $validated['type'] === 'guest' ? $validated['name'] : null,
             'email' => $validated['email'],
             'role_id' => $validated['role_id'],
-        ]);
+        ], $request->user()->id);
 
-        $user = User::with(['staff', 'role.department'])->findOrFail($result['user']->id);
+        $user = User::with(self::WITH_RELATIONS)->findOrFail($result['user']->id);
 
         AuditLog::record($request->user()->id, 'user.created', User::class, $user->id, [
             'email' => $user->email,
@@ -97,9 +99,9 @@ class UserController extends Controller
             'email' => $validated['email'],
             'status' => $validated['status'],
             'role_id' => $validated['role_id'],
-        ]);
+        ], $request->user()->id);
 
-        $fresh = User::with(['staff', 'role.department'])->findOrFail($userId);
+        $fresh = User::with(self::WITH_RELATIONS)->findOrFail($userId);
 
         AuditLog::record($request->user()->id, 'user.updated', User::class, $user->id, [
             'status' => ['from' => $previousStatus, 'to' => $validated['status']],
@@ -130,5 +132,20 @@ class UserController extends Controller
             'temporary_password' => $result['temporary_password'] ?? null,
             'setup_email' => $result['setup_email'] ?? null,
         ]);
+    }
+
+    /**
+     * Admin action: immediately invalidate this user's current session(s),
+     * without touching their password. ResolveTenantConnection rejects any
+     * session issued before this timestamp on its very next request.
+     */
+    public function forceLogout(Request $request, int $userId)
+    {
+        $user = User::findOrFail($userId);
+        $user->forceFill(['sessions_invalidated_at' => now()])->save();
+
+        AuditLog::record($request->user()->id, 'user.force_logged_out', User::class, $user->id);
+
+        return response()->json(['message' => 'The user has been logged out.']);
     }
 }
