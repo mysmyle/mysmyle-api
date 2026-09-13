@@ -155,6 +155,7 @@ trait BuildsTenantData
             'email' => 'super@mysmyle.test',
             'password' => Hash::make('password'),
             'status' => 'active',
+            'role' => LandlordAdmin::ROLE_SUPER_ADMIN,
         ], $attributes));
     }
 }

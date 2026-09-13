@@ -17,7 +17,7 @@ class LandlordAdminController extends Controller
     {
         $pending = LandlordPasswordSetupToken::whereNull('used_at')->pluck('landlord_admin_id')->flip();
 
-        $admins = LandlordAdmin::all(['id', 'name', 'email', 'status'])
+        $admins = LandlordAdmin::all(['id', 'name', 'email', 'status', 'role'])
             ->map(fn (LandlordAdmin $admin) => $admin->toArray() + [
                 'setup_pending' => $pending->has($admin->id),
             ]);
@@ -30,6 +30,7 @@ class LandlordAdminController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', Rule::unique('landlord.landlord_admins', 'email')],
+            'role' => ['required', Rule::in([LandlordAdmin::ROLE_SUPER_ADMIN, LandlordAdmin::ROLE_SUPPORT])],
         ]);
 
         $admin = LandlordAdmin::create([
@@ -37,12 +38,13 @@ class LandlordAdminController extends Controller
             'email' => $validated['email'],
             'password' => null,
             'status' => 'active',
+            'role' => $validated['role'],
         ]);
 
         $service->sendSetupLink($admin);
 
         AuditLog::record($request->user()->id, 'landlord_admin.created', LandlordAdmin::class, $admin->id, [
-            'name' => $admin->name, 'email' => $admin->email,
+            'name' => $admin->name, 'email' => $admin->email, 'role' => $admin->role,
         ]);
 
         return response()->json(['admin' => $admin], 201);
@@ -52,20 +54,22 @@ class LandlordAdminController extends Controller
     {
         $admin = LandlordAdmin::findOrFail($adminId);
         $previousStatus = $admin->status;
+        $previousRole = $admin->role;
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', Rule::unique('landlord.landlord_admins', 'email')->ignore($admin->id)],
             'status' => ['required', Rule::in(['active', 'disabled'])],
+            'role' => ['required', Rule::in([LandlordAdmin::ROLE_SUPER_ADMIN, LandlordAdmin::ROLE_SUPPORT])],
         ]);
 
-        if ($validated['status'] === 'disabled') {
-            if ($admin->id === $request->user()->id) {
-                throw ValidationException::withMessages([
-                    'status' => ['You cannot disable your own account.'],
-                ]);
-            }
+        if ($validated['status'] === 'disabled' && $admin->id === $request->user()->id) {
+            throw ValidationException::withMessages([
+                'status' => ['You cannot disable your own account.'],
+            ]);
+        }
 
+        if ($validated['status'] === 'disabled') {
             $otherActiveAdmins = LandlordAdmin::where('status', 'active')
                 ->where('id', '!=', $admin->id)
                 ->exists();
@@ -77,10 +81,29 @@ class LandlordAdminController extends Controller
             }
         }
 
+        // The resulting record must not be the last active super admin, so
+        // there's always someone who can manage tenants, admins and settings.
+        $remainsActiveSuperAdmin = $validated['status'] === 'active'
+            && $validated['role'] === LandlordAdmin::ROLE_SUPER_ADMIN;
+
+        if (! $remainsActiveSuperAdmin) {
+            $otherActiveSuperAdmins = LandlordAdmin::where('status', 'active')
+                ->where('role', LandlordAdmin::ROLE_SUPER_ADMIN)
+                ->where('id', '!=', $admin->id)
+                ->exists();
+
+            if (! $otherActiveSuperAdmins) {
+                throw ValidationException::withMessages([
+                    'role' => ['At least one active super admin must remain.'],
+                ]);
+            }
+        }
+
         $admin->update($validated);
 
         AuditLog::record($request->user()->id, 'landlord_admin.updated', LandlordAdmin::class, $admin->id, [
             'status' => ['from' => $previousStatus, 'to' => $admin->status],
+            'role' => ['from' => $previousRole, 'to' => $admin->role],
         ]);
 
         return response()->json(['admin' => $admin]);

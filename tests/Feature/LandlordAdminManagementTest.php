@@ -31,10 +31,11 @@ class LandlordAdminManagementTest extends TestCase
         Mail::fake();
 
         $this->actingAsLandlordAdmin($this->superAdmin)
-            ->postJson('/api/landlord/admins', ['name' => 'New Admin', 'email' => 'new@mysmyle.test'])
+            ->postJson('/api/landlord/admins', ['name' => 'New Admin', 'email' => 'new@mysmyle.test', 'role' => 'support'])
             ->assertStatus(201)
             ->assertJsonPath('admin.name', 'New Admin')
-            ->assertJsonPath('admin.status', 'active');
+            ->assertJsonPath('admin.status', 'active')
+            ->assertJsonPath('admin.role', 'support');
 
         $this->assertDatabaseHas('landlord_admins', ['email' => 'new@mysmyle.test', 'password' => null]);
         $this->assertDatabaseHas('landlord_audit_logs', [
@@ -47,7 +48,7 @@ class LandlordAdminManagementTest extends TestCase
     {
         Mail::fake();
         $this->actingAsLandlordAdmin($this->superAdmin)
-            ->postJson('/api/landlord/admins', ['name' => 'New Admin', 'email' => 'new@mysmyle.test'])
+            ->postJson('/api/landlord/admins', ['name' => 'New Admin', 'email' => 'new@mysmyle.test', 'role' => 'support'])
             ->assertStatus(201);
 
         $this->actingAsLandlordAdmin($this->superAdmin)
@@ -73,7 +74,7 @@ class LandlordAdminManagementTest extends TestCase
 
         $this->actingAsLandlordAdmin($this->superAdmin)
             ->putJson("/api/landlord/admins/{$other->id}", [
-                'name' => $other->name, 'email' => $other->email, 'status' => 'disabled',
+                'name' => $other->name, 'email' => $other->email, 'status' => 'disabled', 'role' => $other->role,
             ])
             ->assertOk()
             ->assertJsonPath('admin.status', 'disabled');
@@ -89,7 +90,8 @@ class LandlordAdminManagementTest extends TestCase
     {
         $this->actingAsLandlordAdmin($this->superAdmin)
             ->putJson("/api/landlord/admins/{$this->superAdmin->id}", [
-                'name' => $this->superAdmin->name, 'email' => $this->superAdmin->email, 'status' => 'disabled',
+                'name' => $this->superAdmin->name, 'email' => $this->superAdmin->email,
+                'status' => 'disabled', 'role' => $this->superAdmin->role,
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('status');
@@ -103,7 +105,7 @@ class LandlordAdminManagementTest extends TestCase
 
         $this->actingAsLandlordAdmin($other)
             ->putJson("/api/landlord/admins/{$other->id}", [
-                'name' => $other->name, 'email' => $other->email, 'status' => 'disabled',
+                'name' => $other->name, 'email' => $other->email, 'status' => 'disabled', 'role' => $other->role,
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('status');

@@ -3,6 +3,7 @@
 use App\Http\Middleware\CheckModuleAccess;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\EnsurePasswordIsSet;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\ResolveLandlordAdmin;
 use App\Http\Middleware\ResolveTenantConnection;
 use Illuminate\Foundation\Application;
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'module.access' => CheckModuleAccess::class,
             'password.set' => EnsurePasswordIsSet::class,
             'landlord.admin' => ResolveLandlordAdmin::class,
+            'landlord.super' => EnsureSuperAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -34,22 +34,29 @@ Route::middleware(['landlord.admin'])->group(function () {
     Route::post('/landlord/logout', [LandlordAuthController::class, 'logout']);
     Route::get('/landlord/me', [LandlordAuthController::class, 'me']);
     Route::post('/landlord/password', [LandlordPasswordController::class, 'update']);
+
+    // Available to every active admin, regardless of tier — read access plus
+    // the two support-safe actions (resend a lost link, impersonate).
     Route::get('/landlord/tenants', [TenantManagementController::class, 'index']);
     Route::get('/landlord/tenants/{tenantId}', [TenantManagementController::class, 'show']);
-    Route::post('/landlord/tenants', [TenantManagementController::class, 'store']);
     Route::post('/landlord/tenants/{tenantId}/resend-setup-link', [TenantManagementController::class, 'resendSetupLink']);
-    Route::post('/landlord/tenants/{tenantId}/suspend', [TenantManagementController::class, 'suspend']);
-    Route::post('/landlord/tenants/{tenantId}/reactivate', [TenantManagementController::class, 'reactivate']);
-    Route::get('/landlord/settings/password-policy', [SettingsController::class, 'passwordPolicy']);
-    Route::put('/landlord/settings/password-policy', [SettingsController::class, 'updatePasswordPolicy']);
     Route::get('/landlord/audit-logs', [LandlordAuditLogController::class, 'index']);
-    Route::get('/landlord/admins', [LandlordAdminController::class, 'index']);
-    Route::post('/landlord/admins', [LandlordAdminController::class, 'store']);
-    Route::put('/landlord/admins/{adminId}', [LandlordAdminController::class, 'update']);
-    Route::post('/landlord/admins/{adminId}/resend-setup-link', [LandlordAdminController::class, 'resendSetupLink']);
-    Route::post('/landlord/admins/{adminId}/reset-password', [LandlordAdminController::class, 'resetPassword']);
     Route::get('/landlord/tenants/{tenantId}/users', [LandlordImpersonationController::class, 'index']);
     Route::post('/landlord/tenants/{tenantId}/impersonate/{userId}', [LandlordImpersonationController::class, 'start']);
+
+    // super_admin only — tenant lifecycle, platform settings, admin management.
+    Route::middleware(['landlord.super'])->group(function () {
+        Route::post('/landlord/tenants', [TenantManagementController::class, 'store']);
+        Route::post('/landlord/tenants/{tenantId}/suspend', [TenantManagementController::class, 'suspend']);
+        Route::post('/landlord/tenants/{tenantId}/reactivate', [TenantManagementController::class, 'reactivate']);
+        Route::get('/landlord/settings/password-policy', [SettingsController::class, 'passwordPolicy']);
+        Route::put('/landlord/settings/password-policy', [SettingsController::class, 'updatePasswordPolicy']);
+        Route::get('/landlord/admins', [LandlordAdminController::class, 'index']);
+        Route::post('/landlord/admins', [LandlordAdminController::class, 'store']);
+        Route::put('/landlord/admins/{adminId}', [LandlordAdminController::class, 'update']);
+        Route::post('/landlord/admins/{adminId}/resend-setup-link', [LandlordAdminController::class, 'resendSetupLink']);
+        Route::post('/landlord/admins/{adminId}/reset-password', [LandlordAdminController::class, 'resetPassword']);
+    });
 });
 
 // Public — the emailed set-password link for an invited landlord admin.
