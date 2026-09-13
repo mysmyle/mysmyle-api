@@ -21,8 +21,8 @@ class ModuleSeeder extends Seeder
             ['name' => 'Purchase & Inventory', 'abbreviation' => 'INV', 'kind' => $clinical, 'is_visible' => true],
             ['name' => 'Communication Portal', 'abbreviation' => 'COM', 'kind' => $clinical, 'is_visible' => true],
             ['name' => 'Accounts & Expenditure', 'abbreviation' => 'FIN', 'kind' => $clinical, 'is_visible' => true],
-            ['name' => 'Staff Qualification & Education (HR)', 'abbreviation' => 'SQE', 'kind' => $clinical, 'is_visible' => true],
             ['name' => 'Legal & Professionalism', 'abbreviation' => 'LAP', 'kind' => $clinical, 'is_visible' => true],
+            ['name' => 'Staff Qualification & Education (HR)', 'abbreviation' => 'SQE', 'kind' => $clinical, 'is_visible' => true],
             ['name' => 'Policies & Procedures', 'abbreviation' => 'P&P', 'kind' => $clinical, 'is_visible' => true],
             ['name' => 'Manual & Guidelines', 'abbreviation' => 'HLP', 'kind' => $clinical, 'is_visible' => true],
 
