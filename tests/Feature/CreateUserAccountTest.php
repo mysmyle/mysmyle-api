@@ -81,6 +81,17 @@ class CreateUserAccountTest extends TestCase
         ]);
     }
 
+    public function test_records_who_created_the_account_and_when(): void
+    {
+        $this->submit()
+            ->assertStatus(201)
+            ->assertJsonPath('user.created_by', 'Admin');
+
+        $user = User::where('email', 'reception@test-clinic.test')->first();
+        $this->assertSame($this->admin->id, $user->created_by);
+        $this->assertNotNull($user->created_at);
+    }
+
     public function test_a_temporary_password_is_generated_revealed_and_emailed(): void
     {
         $response = $this->submit()->assertStatus(201);
