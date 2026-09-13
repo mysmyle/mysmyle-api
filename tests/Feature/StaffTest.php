@@ -97,6 +97,18 @@ class StaffTest extends TestCase
         $this->assertSame('active', Staff::where('name', 'Ignored Status')->first()->status);
     }
 
+    public function test_records_who_created_the_staff_member_and_when(): void
+    {
+        $this->acting()
+            ->postJson('/api/staff', ['name' => 'Dr Cruz', 'personal_email' => 'dr.cruz@example.com'])
+            ->assertStatus(201)
+            ->assertJsonPath('staff.created_by', 'Admin');
+
+        $staff = Staff::where('name', 'Dr Cruz')->first();
+        $this->assertSame($this->admin->id, $staff->created_by);
+        $this->assertNotNull($staff->created_at);
+    }
+
     public function test_name_is_required(): void
     {
         $this->acting()->postJson('/api/staff', ['name' => ''])
@@ -142,6 +154,55 @@ class StaffTest extends TestCase
         $this->assertSame('Female', $staff->gender);
         $this->assertSame('1985-06-01', $staff->date_of_birth->toDateString());
         $this->assertSame('inactive', $staff->status);
+    }
+
+    public function test_disabling_a_staff_member_records_who_and_when(): void
+    {
+        $staff = Staff::create(['name' => 'Active One', 'status' => 'active']);
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Active One', 'personal_email' => 'active@example.com', 'status' => 'inactive',
+        ])
+            ->assertOk()
+            ->assertJsonPath('staff.disabled_by', 'Admin');
+
+        $fresh = $staff->fresh();
+        $this->assertSame($this->admin->id, $fresh->disabled_by);
+        $this->assertNotNull($fresh->disabled_at);
+    }
+
+    public function test_reactivating_a_staff_member_clears_the_disabled_tracking(): void
+    {
+        $staff = Staff::create(['name' => 'Toggled', 'status' => 'active']);
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Toggled', 'personal_email' => 'toggled@example.com', 'status' => 'inactive',
+        ])->assertOk();
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Toggled', 'personal_email' => 'toggled@example.com', 'status' => 'active',
+        ])
+            ->assertOk()
+            ->assertJsonPath('staff.disabled_by', null);
+
+        $fresh = $staff->fresh();
+        $this->assertNull($fresh->disabled_by);
+        $this->assertNull($fresh->disabled_at);
+    }
+
+    public function test_saving_without_changing_status_does_not_touch_disabled_tracking(): void
+    {
+        $staff = Staff::create(['name' => 'Stable', 'status' => 'active']);
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Stable', 'personal_email' => 'stable@example.com', 'status' => 'inactive',
+        ])->assertOk();
+
+        $this->acting()->putJson("/api/staff/{$staff->id}", [
+            'name' => 'Stable Renamed', 'personal_email' => 'stable@example.com', 'status' => 'inactive',
+        ])->assertOk();
+
+        $this->assertSame($this->admin->id, $staff->fresh()->disabled_by);
     }
 
     public function test_update_still_validates(): void
