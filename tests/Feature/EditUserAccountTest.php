@@ -75,38 +75,8 @@ class EditUserAccountTest extends TestCase
         $this->assertDatabaseMissing('tenant_users', ['email' => 'frontdesk@test-clinic.test']);
     }
 
-    public function test_disabling_an_account_records_who_and_when(): void
-    {
-        $this->save(['status' => 'inactive'])
-            ->assertOk()
-            ->assertJsonPath('user.disabled_by', 'Admin');
 
-        $fresh = $this->account->fresh();
-        $this->assertSame($this->admin->id, $fresh->disabled_by);
-        $this->assertNotNull($fresh->disabled_at);
-    }
 
-    public function test_reactivating_an_account_clears_the_disabled_tracking(): void
-    {
-        $this->save(['status' => 'inactive'])->assertOk();
-
-        $this->save(['status' => 'active'])
-            ->assertOk()
-            ->assertJsonPath('user.disabled_by', null);
-
-        $fresh = $this->account->fresh();
-        $this->assertNull($fresh->disabled_by);
-        $this->assertNull($fresh->disabled_at);
-    }
-
-    public function test_saving_without_changing_status_does_not_touch_disabled_tracking(): void
-    {
-        $this->save(['status' => 'inactive'])->assertOk();
-
-        $this->save(['status' => 'inactive', 'email' => 'reception2@test-clinic.test'])->assertOk();
-
-        $this->assertSame($this->admin->id, $this->account->fresh()->disabled_by);
-    }
 
     public function test_a_deactivated_account_cannot_log_in(): void
     {

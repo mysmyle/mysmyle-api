@@ -66,8 +66,6 @@ class AuthController extends Controller
             'session_issued_at' => now()->timestamp,
         ]);
 
-        $user->update(['last_login_at' => now()]);
-
         return response()->json([
             'user' => ['id' => $user->id, 'email' => $user->email],
             'tenant' => ['id' => $tenant->id, 'name' => $tenant->name, 'slug' => $tenant->slug],

@@ -62,7 +62,6 @@ class TenantManagementController extends Controller
             'staff_count' => null,
             'department_count' => null,
             'role_count' => null,
-            'last_login_at' => null,
         ];
 
         if (in_array($tenant->status, [Tenant::STATUS_ACTIVE, Tenant::STATUS_SUSPENDED], true)) {
@@ -72,7 +71,6 @@ class TenantManagementController extends Controller
                 'staff_count' => Staff::count(),
                 'department_count' => Department::count(),
                 'role_count' => Role::count(),
-                'last_login_at' => User::max('last_login_at'),
             ];
         }
 

@@ -13,11 +13,11 @@ return new class extends Migration
             $table->string('name');
             // Real inbox for the staff member — where their account set-password
             // link is sent. App-required on create/edit; nullable here so seeders
-            // and older rows don't break.
+            // and imported rows without one don't break.
             $table->string('personal_email')->nullable();
             $table->string('gender')->nullable();
             $table->date('date_of_birth')->nullable();
-            $table->string('status')->default('active');
+            $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamps();
         });
     }

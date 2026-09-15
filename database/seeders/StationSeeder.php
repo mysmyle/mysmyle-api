@@ -14,7 +14,6 @@ class StationSeeder extends Seeder
     public function run(): void
     {
         $this->seedRegistrationStations();
-        $this->seedStaffQualificationStations();
         $this->seedControlPanelStations();
     }
 
@@ -46,23 +45,6 @@ class StationSeeder extends Seeder
             'station_id' => Station::where('code', 'RAP.CONFIRMATIONS')->firstOrFail()->id,
             'action' => 'overruling_access',
         ]);
-    }
-
-    protected function seedStaffQualificationStations(): void
-    {
-        $sqe = Module::where('abbreviation', 'SQE')->firstOrFail();
-
-        $station = Station::updateOrCreate(
-            ['code' => 'SQE.QUALIFICATIONS'],
-            ['module_id' => $sqe->id, 'name' => 'Staff Qualifications']
-        );
-
-        foreach (['view', 'add', 'edit'] as $action) {
-            Permission::updateOrCreate([
-                'station_id' => $station->id,
-                'action' => $action,
-            ]);
-        }
     }
 
     protected function seedStandardPermissions(Station $station): void

@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
-    private const WITH_RELATIONS = ['staff', 'role.department', 'createdBy.staff', 'disabledBy.staff'];
+    private const WITH_RELATIONS = ['staff', 'role.department'];
 
     public function index(Request $request)
     {
@@ -60,7 +60,7 @@ class UserController extends Controller
             'name' => $validated['type'] === 'guest' ? $validated['name'] : null,
             'email' => $validated['email'],
             'role_id' => $validated['role_id'],
-        ], $request->user()->id);
+        ]);
 
         $user = User::with(self::WITH_RELATIONS)->findOrFail($result['user']->id);
 
@@ -99,7 +99,7 @@ class UserController extends Controller
             'email' => $validated['email'],
             'status' => $validated['status'],
             'role_id' => $validated['role_id'],
-        ], $request->user()->id);
+        ]);
 
         $fresh = User::with(self::WITH_RELATIONS)->findOrFail($userId);
 

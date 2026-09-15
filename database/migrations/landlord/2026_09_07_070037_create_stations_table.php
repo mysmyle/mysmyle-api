@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('stations', function (Blueprint $table) {
             $table->id();
             $table->foreignId('module_id')->constrained('modules')->cascadeOnDelete();
+            $table->string('code')->unique()->nullable();
             $table->string('name');
             $table->timestamps();
         });

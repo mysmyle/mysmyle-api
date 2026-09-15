@@ -17,8 +17,10 @@ return new class extends Migration
             $table->string('db_port')->default('3306');
             $table->text('db_username'); // encrypted cast in model
             $table->text('db_password'); // encrypted cast in model
-            $table->enum('status', ['active', 'suspended', 'provisioning'])
+            $table->enum('status', ['active', 'suspended', 'provisioning', 'failed'])
                 ->default('provisioning');
+            $table->text('provision_error')->nullable();
+            $table->timestamp('provisioned_at')->nullable();
             $table->timestamps();
         });
     }

@@ -14,10 +14,9 @@ class StaffController extends Controller
 {
     public function index(Request $request)
     {
-        $staff = Staff::with(['createdBy.staff', 'disabledBy.staff'])
-            ->withCount('users')
+        $staff = Staff::withCount('users')
             ->orderBy('name')
-            ->get(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status', 'created_by', 'disabled_by', 'disabled_at', 'created_at'])
+            ->get(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status', 'created_at'])
             ->map(fn (Staff $member) => $this->present($member) + ['users_count' => $member->users_count]);
 
         return response()->json(['staff' => $staff]);
@@ -48,7 +47,6 @@ class StaffController extends Controller
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
             'status' => 'active',
-            'created_by' => $request->user()->id,
         ]);
 
         AuditLog::record($request->user()->id, 'staff.created', Staff::class, $staff->id, [
@@ -80,8 +78,6 @@ class StaffController extends Controller
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
             'status' => $data['status'],
-            'disabled_by' => $isBeingDisabled ? $request->user()->id : ($isBeingReactivated ? null : $staff->disabled_by),
-            'disabled_at' => $isBeingDisabled ? now() : ($isBeingReactivated ? null : $staff->disabled_at),
         ]);
 
         AuditLog::record($request->user()->id, 'staff.updated', Staff::class, $staff->id, [
@@ -113,9 +109,6 @@ class StaffController extends Controller
 
     private function present(Staff $staff): array
     {
-        return $staff->only(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status', 'created_at', 'disabled_at']) + [
-            'created_by' => $staff->createdBy?->displayName(),
-            'disabled_by' => $staff->disabledBy?->displayName(),
-        ];
+        return $staff->only(['id', 'name', 'personal_email', 'gender', 'date_of_birth', 'status', 'created_at']);
     }
 }
