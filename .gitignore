@@ -4,6 +4,12 @@
 .env
 .env.backup
 .env.production
+# Any hand-made copy of a real .env — these carry APP_KEY and live DB
+# credentials, and the .env.backup line alone does not catch them.
+.env.bak*
+.env.*.bak
+.env.local
+.env.*.local
 .phpactor.json
 .phpunit.result.cache
 /.codex
