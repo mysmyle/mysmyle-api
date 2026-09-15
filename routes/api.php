@@ -16,6 +16,7 @@ use App\Http\Controllers\Tenant\DesignationController;
 use App\Http\Controllers\Tenant\ImpersonationController;
 use App\Http\Controllers\Tenant\ModuleController;
 use App\Http\Controllers\Tenant\PasswordController;
+use App\Http\Controllers\Tenant\PatientController;
 use App\Http\Controllers\Tenant\RoleController;
 use App\Http\Controllers\Tenant\RolePermissionController;
 use App\Http\Controllers\Tenant\StaffController;
@@ -84,6 +85,13 @@ Route::middleware(['tenant'])->group(function () {
     // Everything else is blocked while must_change_password is set.
     Route::middleware('password.set')->group(function () {
         Route::get('/modules', [ModuleController::class, 'index']);
+
+        // Registrations & Appointments — the clinical front desk.
+        Route::middleware('module.access:RAP')->group(function () {
+            // The Search Patient lookup behind the RAP board's modal.
+            Route::get('/patients/search', [PatientController::class, 'search'])
+                ->middleware('permission:RAP.PATIENTS,view');
+        });
 
         // Control Panel — administration surface. Requires the CP system module,
         // then a per-section permission (CP.STAFF / CP.USERS / CP.ROLES / CP.CATALOG,
