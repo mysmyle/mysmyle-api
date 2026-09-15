@@ -126,6 +126,91 @@ abstract class BaseLegacyImporter
     }
 
     /**
+     * Parse a legacy datetime whose MONTH/DAY ORDER CANNOT BE TRUSTED, using a
+     * second column as a witness when the string alone is ambiguous.
+     *
+     * Needed for exactly one column: `appointmentlog.created_date`. Verified on
+     * live 2026-09-15 that no other date column in the module carries this
+     * defect — updated_date, clinic_forwarded_datetime, is_triage_start/end,
+     * visit_completed_datetime, discharge, appointment_confirmation_datetime,
+     * 2days_sms_datetime, reschedule_date and aplist_cdate all measure ZERO
+     * impossible months.
+     *
+     * Inside appointment ids 32957-36988 the writer emitted BOTH orders, mixed
+     * row by row:
+     *
+     *   provably Y-d-m (month component > 12)   1,792
+     *   ambiguous      (both parts <= 12)         886
+     *   provably Y-m-d (day component > 12)        48
+     *
+     * So "treat the whole id block as Y-d-m" would corrupt the 48 that are
+     * already right. Each row has to be decided on its own evidence:
+     *
+     *   1. month > 12  -> it can only be Y-d-m. Swap.
+     *   2. day   > 12  -> it can only be Y-m-d. Leave.
+     *   3. neither     -> undecidable from the string. Ask the witness.
+     *
+     * The witness is `updated_date`, which is written in a TEXTUAL-month format
+     * ('01-Jun-2022', '2022-Nov-21') on 827 of those 886 rows and is therefore
+     * unambiguous. Rows are typically updated seconds after creation, so when
+     * the swapped reading lands on the witness's day and the as-is reading does
+     * not, the swap is correct. Worked example, appointment 33694:
+     *
+     *   created_date '2022-01-06 08:49:28'   updated_date '01-Jun-2022 08:50:00'
+     *   as-is    -> 6 Jan 2022   (five months before the update)
+     *   swapped  -> 1 Jun 2022   (72 seconds before it)  <- chosen
+     *
+     * When nothing settles it the value is left AS-IS, which is the documented
+     * format and the right default: the defect is confined to one id block of
+     * 2,726 rows, so for the rest of the table there is no reason to doubt the
+     * order in the first place.
+     *
+     * @return array{0: ?string, 1: bool} the parsed datetime, and whether the
+     *                                    month/day order was corrected
+     */
+    protected function parseUnreliableOrderDateTime(?string $value, ?string $witness = null): array
+    {
+        $raw = trim((string) $value);
+
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(.*)$/', $raw, $m) !== 1) {
+            return [$this->parseLegacyDateTime($raw), false];
+        }
+
+        [, $year, $second, $third, $rest] = $m;
+        $a = (int) $second;
+        $b = (int) $third;
+
+        $asIs = $this->parseLegacyDateTime("{$year}-{$second}-{$third}{$rest}");
+        $swapped = $this->parseLegacyDateTime("{$year}-{$third}-{$second}{$rest}");
+
+        // 1 — an impossible month means the parts are the other way round.
+        if ($a > 12) {
+            return [$swapped, true];
+        }
+
+        // 2 — an impossible day in the swapped reading means as-is was right.
+        if ($b > 12) {
+            return [$asIs, false];
+        }
+
+        // 3 — undecidable from the string; let the witness break the tie. Only
+        // a POSITIVE match on the swapped reading overturns the default, so a
+        // row simply updated on some later day changes nothing.
+        $witnessDay = $this->parseLegacyDate($witness);
+
+        if ($witnessDay !== null && $swapped !== null && $asIs !== null) {
+            $swappedDay = substr($swapped, 0, 10);
+            $asIsDay = substr($asIs, 0, 10);
+
+            if ($swappedDay === $witnessDay && $asIsDay !== $witnessDay) {
+                return [$swapped, true];
+            }
+        }
+
+        return [$asIs, false];
+    }
+
+    /**
      * Parse a legacy date/datetime string, treating MySQL "zero dates"
      * ('0000-00-00', '0000-00-00 00:00:00') as invalid rather than handing them
      * to Carbon::parse().

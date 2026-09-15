@@ -2,6 +2,15 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Legacy\LegacyAppointmentImporter;
+use App\Console\Legacy\LegacyAppointmentProcessImporter;
+use App\Console\Legacy\LegacyAppointmentRescheduleImporter;
+use App\Console\Legacy\LegacyAppointmentTentativeImporter;
+use App\Console\Legacy\LegacyAppointmentTypeImporter;
+use App\Console\Legacy\LegacyConfirmationRapImporter;
+use App\Console\Legacy\LegacyDoctorImporter;
+use App\Console\Legacy\LegacyPatientImporter;
+use App\Console\Legacy\LegacyPayerImporter;
 use App\Console\Legacy\LegacyStaffImporter;
 use App\Console\Legacy\LegacyUserImporter;
 use App\Models\Landlord\Tenant;
@@ -30,12 +39,39 @@ class ImportLegacyIdentity extends Command
                             {--dry-run : Read and report without writing}
                             {--drop-seed-admins : First delete the seeded admin accounts occupying ids 1-3}';
 
-    protected $description = 'Import staff, users and doctors from the legacy VDC database into a tenant';
+    protected $description = 'Import reference and patient data from the legacy VDC database into a tenant';
 
-    /** Importer classes in dependency order — users and doctors both need staff. */
+    /**
+     * Importer classes in dependency order.
+     *   users         needs staff
+     *   patients      needs payers (for the insurance block) and the
+     *                 lookup/country reference data seeded by tenant:seed
+     *   doctors       needs staff — every appointment points at one
+     *   appointments  needs doctors, patients and appointment types, plus the
+     *                 statuses seeded by AppointmentModuleSeeder
+     *   the four child importers all need appointments
+     */
     private const IMPORTERS = [
         'staff' => LegacyStaffImporter::class,
         'users' => LegacyUserImporter::class,
+        'payers' => LegacyPayerImporter::class,
+        'patients' => LegacyPatientImporter::class,
+        'doctors' => LegacyDoctorImporter::class,
+        'appointment-types' => LegacyAppointmentTypeImporter::class,
+        'appointments' => LegacyAppointmentImporter::class,
+        'appointment-processes' => LegacyAppointmentProcessImporter::class,
+        'confirmations' => LegacyConfirmationRapImporter::class,
+        'reschedules' => LegacyAppointmentRescheduleImporter::class,
+        'tentatives' => LegacyAppointmentTentativeImporter::class,
+    ];
+
+    /**
+     * Tables with no natural key, which are therefore reloaded rather than
+     * upserted. `confirmation_raps` deliberately allows several contacts at the
+     * same tier, so there is nothing to upsert on — see the importer.
+     */
+    private const RELOAD_TABLES = [
+        'confirmations' => 'confirmation_raps',
     ];
 
     public function handle(TenantConnectionResolver $resolver): int
@@ -89,7 +125,15 @@ class ImportLegacyIdentity extends Command
                 // half-written, and the next attempt starts from a clean table.
                 $dryRun
                     ? $importer->run()
-                    : DB::connection('tenant')->transaction(fn () => $importer->run());
+                    : DB::connection('tenant')->transaction(function () use ($importer, $name) {
+                        // Reload-only tables are cleared inside the same
+                        // transaction, so a failure cannot leave the table empty.
+                        if ($table = self::RELOAD_TABLES[$name] ?? null) {
+                            DB::connection('tenant')->table($table)->delete();
+                        }
+
+                        $importer->run();
+                    });
             } catch (Throwable $e) {
                 $this->error("  {$importer->label()} failed: {$e->getMessage()}");
 
