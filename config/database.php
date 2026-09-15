@@ -61,6 +61,24 @@ return [
             'engine' => null,
         ],
 
+        // Read-only source for the one-time legacy VDC import (`legacy:import`).
+        // Never written to: point LEGACY_DB_USERNAME at a SELECT-only MySQL user.
+        // `strict` is off because the legacy schema stores dates as varchars and
+        // contains zero-dates that strict mode rejects on read.
+        'legacy' => [
+            'driver' => 'mysql',
+            'host' => env('LEGACY_DB_HOST', '127.0.0.1'),
+            'port' => env('LEGACY_DB_PORT', '3306'),
+            'database' => env('LEGACY_DB_DATABASE'),
+            'username' => env('LEGACY_DB_USERNAME'),
+            'password' => env('LEGACY_DB_PASSWORD'),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_general_ci',
+            'prefix' => '',
+            'strict' => false,
+            'engine' => null,
+        ],
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),
