@@ -5,118 +5,100 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The patient master. Source: mysmyleadmin_vdc.patient_registration, 79 columns
- * holding nine different entities. Everything repeating or optional lives in its
- * own table (identity documents, documents, consents, contacts, emergency
- * contacts, insurance, preferences, notes); what is left is here.
+ * The patient master. Shape follows the mysmyleerp reference build; everything
+ * repeating or optional lives in its own table (contact numbers, emergency
+ * contacts, payers, documents).
  *
- * KEY: patients.id IS patient_registration.id. There is deliberately no
- * `legacy_id` column — the primary key carries that meaning, the same
- * convention LegacyStaffImporter and LegacyUserImporter already follow
- * (staff.id = employee_id, users.id = login_id).
+ * Column order follows the project standard: primary key, then every foreign
+ * key, then the table's own data, then timestamps.
  *
- * `chart` IS UNIQUE, from the first migration. That is only possible because
- * this table starts empty: 18 legacy charts span 52 rows, so the previous system
- * — which had already imported all of them as separate patients — could not add
- * the constraint without a data-repair step first. Here the importer resolves
- * duplicates BEFORE the first insert (lowest legacy id survives, the rest go to
- * patient_merges), so the constraint holds from row one and the database, not a
- * convention, is what guarantees one patient per chart.
+ * KEY: patients.id IS the legacy patient_registration.id for the migrated
+ * tenant. That is not a migration artefact — it is the same convention
+ * LegacyStaffImporter and LegacyUserImporter already follow (staff.id =
+ * employee_id, users.id = login_id), and it means the import needs no crosswalk
+ * table to find a patient again.
  *
- * The importer re-runs every five minutes and re-applies that rule, so a NEW
- * duplicate created in legacy tomorrow is merged and flagged rather than
- * breaking the sync.
+ * There are no import-only columns here and no ETL scaffolding behind it. Every
+ * row the importer writes is re-findable by a key that already exists, so the
+ * import leaves nothing in the schema a new clinic would inherit.
+ *
+ * NAMES. `full_name` is the canonical, always-present name; first/middle/last
+ * are the structured parts when they are known. That is the modern, i18n-safe
+ * way round — names do not decompose universally, and 5,540 of 10,506 legacy
+ * patients have only the full string. The previous importer guessed a split
+ * with explode(' ') and discarded the original. Keeping the full string is not
+ * a legacy concession; it is how the field should have been modelled anyway.
+ *
+ * DUPLICATE AND TEST CHARTS. `chart` is UNIQUE, which is possible because this
+ * table starts empty. 18 legacy charts span 52 rows. Measured: 16 are exact
+ * double-submits (identical name, phone, date of birth and payer, consecutive
+ * ids) and the other two are the reserved test charts 777777 (16 rows) and
+ * 1000001 (4 rows). The importer keeps the lowest legacy id per chart and
+ * reports the rest, so a test chart lands as ONE patient rather than sixteen,
+ * and nothing real is lost.
  *
  * Columns deliberately NOT carried from legacy, all verified empty or derivable:
  *   patient_trn, ethnic, race, photo (0% filled — never used)
  *   country_id, state_id, city_id   (0% — an address hierarchy wired to 147,811
  *                                    city rows and never populated once)
- *   Age                             (derived from date_of_birth, and already
- *                                    disagreed with the mirror in 197 rows)
+ *   Age                             (derived from date_of_birth)
  *   country                         (Malaffi code, recomputed from the country)
  *   citizen                         (duplicate of Nationality; they disagreed in
  *                                    5,541 rows — one fact, one place)
- * Every one of them stays recoverable verbatim from patient_legacy_snapshots.
+ *   is_memtype_overruled            (99.8% of the rows carrying it simply have a
+ *                                    tier; it guards an auto-derivation rule
+ *                                    that does not exist yet)
+ *   created_by / updated_by         (display-name strings; 13 of 88 names have
+ *                                    no matching login, and who those actors are
+ *                                    is an open decision — deferred, not lost)
  */
 return new class extends Migration
 {
     public function up(): void
     {
         Schema::create('patients', function (Blueprint $table) {
-            // NOT auto-incrementing by accident: the importer assigns the legacy
-            // id explicitly. Kept as a normal auto-increment PK so that patients
-            // created in this app (once it becomes the writer) still work.
             $table->id();
 
-            // ─── Identity ────────────────────────────────────────────────────
-            // The business key, and the join key in 164 other legacy tables.
-            // Legacy allocated it with an unlocked MAX(Chart)+1 in PHP.
-            $table->unsignedBigInteger('chart');
-
-            // first_name is NULLABLE on purpose. The previous importer wrote the
-            // literal string "Unknown" whenever it could not split a name, which
-            // turned a missing value into a fake one in thousands of rows.
-            $table->string('first_name')->nullable();
-            $table->string('middle_name')->nullable();
-            $table->string('last_name')->nullable();
-            $table->string('nickname')->nullable();
-
-            // 5,540 of 10,563 legacy patients have ONLY the full-name string.
-            // Keep the original verbatim and flag it, rather than guessing a
-            // split — Arabic and multi-part names do not survive explode(' ').
-            $table->string('full_name_legacy')->nullable();
-            $table->boolean('name_review_required')->default(false);
-
-            // ─── Demographics ────────────────────────────────────────────────
-            // Legacy stored DOB as four incompatible string formats and used
-            // 01/01/1900 1,479 times to mean "unknown". That sentinel becomes
-            // NULL + is_estimated, so the fact survives without faking a date.
-            $table->date('date_of_birth')->nullable();
-            $table->boolean('date_of_birth_is_estimated')->default(false);
-
-            $table->string('email')->nullable();
-
+            // ─── Foreign keys ────────────────────────────────────────────────
             $table->foreignId('nationality_id')->nullable()->constrained('countries')->nullOnDelete();
             $table->foreignId('title_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
             $table->foreignId('gender_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
             $table->foreignId('marital_status_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
             $table->foreignId('religion_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
-            // Spoken language.
+            $table->foreignId('document_presented_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
+            // What the patient speaks.
             $table->foreignId('language_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
-            // Language the clinic writes to them in — drives ChaTTo-P messaging.
+            // What the clinic writes to them in — drives ChaTTo-P messaging.
             $table->foreignId('preferred_comm_language_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
-
-            // ─── Membership ──────────────────────────────────────────────────
             $table->foreignId('membership_type_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
-            // Legacy is_memtype_overruled: the tier was set by hand, so the
-            // automatic rules must not recompute it.
-            $table->boolean('membership_overruled')->default(false);
-
-            // ─── Lifecycle ───────────────────────────────────────────────────
             $table->foreignId('status_id')->nullable()->constrained('patient_lookups')->nullOnDelete();
-            // Set on the losing record of a merge; see patient_merges.
-            $table->foreignId('merged_into_patient_id')->nullable()->constrained('patients')->nullOnDelete();
 
-            // ─── Audit ───────────────────────────────────────────────────────
-            // restrictOnDelete, never nullOnDelete: removing a user must not
-            // silently erase who created a patient record. Legacy held a display
-            // name string here, which could not be joined and could not be
-            // trusted — 7 names in `login` belong to more than one login row.
-            $table->foreignId('created_by')->nullable()->constrained('users')->restrictOnDelete();
-            $table->foreignId('updated_by')->nullable()->constrained('users')->restrictOnDelete();
+            // ─── Data ────────────────────────────────────────────────────────
+            // The business key, and the join key in 164 legacy tables.
+            $table->unsignedBigInteger('chart');
+
+            // The canonical name — always present. See the class comment.
+            $table->string('full_name');
+            // The structured parts, when known.
+            $table->string('first_name')->nullable();
+            $table->string('middle_name')->nullable();
+            $table->string('last_name')->nullable();
+            $table->string('nickname')->nullable();
+
+            $table->date('date_of_birth')->nullable();
+            $table->string('email')->nullable();
+            $table->string('city')->nullable();
+            $table->string('emirates')->nullable();
 
             $table->timestamps();
             $table->softDeletes();
 
             // ─── Indexes ─────────────────────────────────────────────────────
-            // The identity guarantee legacy never had. See the class comment.
             $table->unique('chart');
+            $table->index('full_name');
             $table->index('last_name');
             $table->index(['last_name', 'first_name']);
             $table->index('date_of_birth');
-            $table->index('status_id');
-            $table->index('merged_into_patient_id');
-            $table->index('name_review_required');
         });
     }
 

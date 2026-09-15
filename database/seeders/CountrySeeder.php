@@ -6,75 +6,29 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Country reference data, plus every nationality spelling the legacy data uses.
+ * Country reference data.
  *
- * IDS ARE THE LEGACY country_id. That is deliberate and load-bearing: legacy
- * patient_registration.Nationality holds the legacy countries.nationality STRING,
- * and other legacy tables reference countries by that id. Preserving it is the
- * same convention LegacyStaffImporter and LegacyUserImporter already follow
- * (staff.id = employee_id, users.id = login_id).
+ * IDS ARE THE LEGACY country_id, and that is load-bearing. Legacy
+ * patient_registration.Nationality holds a STRING from the legacy countries
+ * table, so the importer resolves a patient's nationality against that table
+ * and gets a country_id back — which, because of this alignment, IS the id to
+ * write. Verified: all 249 legacy rows match a row here by id, and it is the
+ * same country in every case (alpha-3 agrees).
  *
- * The country row carries ONE canonical demonym — the first element of the
- * legacy comma list. Every other spelling becomes a row in
- * country_nationality_aliases, which is what makes the patient import exact.
+ * This is the same convention LegacyStaffImporter and LegacyUserImporter
+ * already follow (staff.id = employee_id, users.id = login_id).
  *
- * Why aliases matter, measured on 10,418 legacy patients with a nationality:
- * the previous importer matched only the clean demonym and the country name, so
- * it silently dropped the nationality of 3,132 patients — including everyone
- * recorded as "Emirati, Emirian, Emiri" (2,067), "Philippine, Filipino" (679)
- * and "British, UK" (175). With aliases, those match exactly.
+ * `nationality` is the ONE canonical demonym — the first element of the legacy
+ * comma list, so "Emirati, Emirian, Emiri" becomes "Emirati". The other
+ * spellings are not stored: they exist only in legacy data, and folding them is
+ * the importer's job, not a permanent table every clinic would inherit. See
+ * LegacyPatientImporter, which builds that map in memory from the legacy
+ * countries table at run time.
  *
  * Phone codes are not in the legacy table at all; they come from the ISO list.
  */
 class CountrySeeder extends Seeder
 {
-    /**
-     * Precedence when two countries claim the same spelling — lower wins.
-     * 15 spellings collide; this ordering resolves all but two of them, and
-     * resolves them CORRECTLY:
-     *   "Indian"   -> India, not the British Indian Ocean Territory (527 patients)
-     *   "Nigerian" -> Nigeria, not Niger. Legacy has those two countries
-     *                 shafafiya codes SWAPPED, which is why shafafiya ranks last
-     *   "Chinese"  -> China, not Macao or Taiwan
-     *   "French"   -> France, not French Guiana / Polynesia / Southern Territories
-     */
-    private const SOURCE_PRECEDENCE = [
-        'manual' => 0,
-        'nationality' => 1,
-        'nationality_part' => 2,
-        'en_short_name' => 3,
-        'shafafiya' => 4,
-    ];
-
-    /**
-     * Spellings two countries claim with EQUAL precedence, so no rule can pick a
-     * winner. Both occur in real patient data, so the choice is recorded here
-     * rather than left to whichever row happened to be inserted first.
-     *
-     *   "American"  — United States (237) vs United States Minor Outlying
-     *                 Islands (236). 201 patients. Nobody means the latter.
-     *   "Dominican" — Dominican Republic (64) vs Dominica (63). 17 patients.
-     *                 The Republic is the far larger source of UAE residents.
-     *
-     * The importer still writes a nationality_ambiguous review issue for every
-     * patient resolved this way, so the assumption stays visible.
-     */
-    private const MANUAL_ALIASES = [
-        'American' => 237,
-        'Dominican' => 64,
-
-        // Demonyms that appear in patient data but in no legacy country column,
-        // so nothing could ever have matched them. The previous importer dropped
-        // every one. Unambiguous, so they are simply added rather than queued
-        // for review.
-        'Swede' => 215,          // Sweden
-        'Dutchman' => 157,       // Netherlands
-        'Luxembourger' => 130,   // Luxembourg
-        'Pole' => 177,           // Poland
-        'Spaniard' => 209,       // Spain
-        'Monacan' => 147,        // Monaco
-    ];
-
     /** [id, num_code, alpha_2, alpha_3, en_short_name, legacy_nationality, shafafiya, phone_code] */
     private const COUNTRIES = [
             [1, 4, 'AF', 'AFG', 'Afghanistan', 'Afghan', 'Afghan', '93'],
@@ -359,77 +313,6 @@ class CountrySeeder extends Seeder
             );
         }
 
-        $this->seedAliases($now);
-    }
-
-    /**
-     * Build one alias row per spelling, strongest source first, and let the
-     * first claim on a normalised spelling win. That is why this sorts by
-     * precedence before inserting rather than making a single pass: "Indian"
-     * must be offered by India (as nationality) before the British Indian Ocean
-     * Territory offers it (as shafafiya), or the wrong country takes 527
-     * patients with it.
-     */
-    private function seedAliases(mixed $now): void
-    {
-        $candidates = [];
-
-        foreach (self::MANUAL_ALIASES as $alias => $countryId) {
-            $candidates[] = [$alias, $countryId, 'manual'];
-        }
-
-        foreach (self::COUNTRIES as [$id, , , , $name, $legacyNationality, $shafafiya]) {
-            $legacyNationality = trim((string) $legacyNationality);
-
-            if ($legacyNationality !== '') {
-                // The whole legacy string, exactly as patient rows store it
-                // ("Emirati, Emirian, Emiri").
-                $candidates[] = [$legacyNationality, $id, 'nationality'];
-
-                // ...and each element of it ("Emirati", "Emirian", "Emiri").
-                foreach (explode(',', $legacyNationality) as $part) {
-                    if (($part = trim($part)) !== '') {
-                        $candidates[] = [$part, $id, 'nationality_part'];
-                    }
-                }
-            }
-
-            if (($name = trim((string) $name)) !== '') {
-                $candidates[] = [$name, $id, 'en_short_name'];
-            }
-
-            if (($shafafiya = trim((string) $shafafiya)) !== '') {
-                $candidates[] = [$shafafiya, $id, 'shafafiya'];
-            }
-        }
-
-        usort($candidates, fn ($a, $b) => self::SOURCE_PRECEDENCE[$a[2]] <=> self::SOURCE_PRECEDENCE[$b[2]]);
-
-        $seen = [];
-        $rows = [];
-        foreach ($candidates as [$alias, $countryId, $source]) {
-            $normalised = self::normalise($alias);
-
-            if ($normalised === '' || isset($seen[$normalised])) {
-                continue;
-            }
-
-            $seen[$normalised] = true;
-            $rows[] = [
-                'country_id' => $countryId,
-                'alias' => $alias,
-                'alias_normalised' => $normalised,
-                'source' => $source,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-        }
-
-        foreach (array_chunk($rows, 500) as $chunk) {
-            DB::table('country_nationality_aliases')->upsert(
-                $chunk, ['alias_normalised'], ['country_id', 'alias', 'source', 'updated_at']
-            );
-        }
     }
 
     private function canonicalNationality(?string $legacyNationality): ?string
@@ -439,17 +322,4 @@ class CountrySeeder extends Seeder
         return $first !== '' ? $first : null;
     }
 
-    /**
-     * Lowercase, strip everything that is not a letter or a digit, collapse
-     * spacing. "  Emirati" and "Emirati" and "EMIRATI" all become "emirati",
-     * which is what makes matching immune to the stray whitespace and casing in
-     * the legacy data.
-     */
-    public static function normalise(?string $value): string
-    {
-        $value = mb_strtolower(trim((string) $value));
-        $value = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value) ?? '';
-
-        return trim(preg_replace('/\s+/', ' ', $value) ?? '');
-    }
 }
